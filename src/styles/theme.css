@@ -1,0 +1,18 @@
+/* Brand palette: this is the only file you need to edit to re-theme Fresh15. */
+:root {
+  --brand-primary: oklch(0.62 0.18 155);
+  --brand-primary-strong: oklch(0.55 0.18 155);
+  --brand-accent: oklch(0.75 0.16 75);
+  --brand-background: oklch(0.995 0.003 120);
+  --brand-surface: oklch(0.98 0.005 140);
+  --brand-text: oklch(0.16 0.02 160);
+}
+
+.dark {
+  --brand-primary: oklch(0.72 0.18 155);
+  --brand-primary-strong: oklch(0.68 0.18 155);
+  --brand-accent: oklch(0.78 0.16 75);
+  --brand-background: oklch(0.15 0.015 160);
+  --brand-surface: oklch(0.19 0.018 160);
+  --brand-text: oklch(0.97 0.005 140);
+}
