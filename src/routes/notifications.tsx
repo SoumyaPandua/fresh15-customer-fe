@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@/lib/next-router-compat";
-import { Bell, Package, Tag, Info, CheckCheck, Trash2 } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@/lib/next-router-compat";
+import { Bell, BellRing, Package, Tag, Info, CheckCheck, Trash2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Skeleton } from "@/components/common/Skeletons";
@@ -33,15 +33,25 @@ function NotifPage() {
       <div className="mb-4 flex items-center gap-3">
         <Bell className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Notifications</h1>
-        {unreadCount > 0 && (
-          <button
-            onClick={() => markAllRead.mutate()}
-            disabled={markAllRead.isPending}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-full border bg-surface-elevated px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60"
+        <div className="ml-auto flex items-center gap-2">
+          <Link
+            to="/alerts"
+            className="inline-flex items-center gap-1.5 rounded-full border bg-surface-elevated px-3 py-1.5 text-xs font-semibold hover:bg-muted"
           >
-            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
-          </button>
-        )}
+            <BellRing className="h-3.5 w-3.5" />
+            My alerts
+          </Link>
+
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllRead.mutate()}
+              disabled={markAllRead.isPending}
+              className="inline-flex items-center gap-1.5 rounded-full border bg-surface-elevated px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60"
+            >
+              <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+            </button>
+          )}
+        </div>
       </div>
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-2xl" />)}</div>

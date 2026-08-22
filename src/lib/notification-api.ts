@@ -36,7 +36,14 @@ const ORDER_TYPES = [
 
 function iconFor(type?: string): AppNotification["icon"] {
   const t = (type ?? "").toUpperCase();
-  if (t.includes("OFFER") || t.includes("COUPON") || t.includes("PROMO")) return "offer";
+  if (
+    t.includes("OFFER") ||
+    t.includes("COUPON") ||
+    t.includes("PROMO") ||
+    t.includes("PRICE_DROP")
+  )
+    return "offer";
+  if (t.includes("BACK_IN_STOCK")) return "system";
   if (ORDER_TYPES.some((k) => t.includes(k))) return "order";
   return "system";
 }

@@ -15,6 +15,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ProductArt } from "@/components/common/ProductArt";
 import { ProductCard } from "@/components/common/ProductCard";
 import { QuantityStepper } from "@/components/common/QuantityStepper";
+import { ProductAlertCard } from "@/components/common/ProductAlertCard";
 import { Skeleton } from "@/components/common/Skeletons";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -158,6 +159,23 @@ function ProductDetails({ product }: { product: Product }) {
   const qty = cart.qtyOf(product.id);
   const inW = wishlist.has(product.id);
 
+  /*
+   * Important:
+   *
+   * The product API exposes the current stock.
+   * We use that value as the source of truth for the
+   * product-page purchase CTA.
+   *
+   * stock <= 0:
+   *   - Do not allow ADD
+   *   - Do not show Go to cart
+   *   - ProductAlertCard remains available
+   *
+   * stock > 0:
+   *   - Normal cart functionality is available
+   */
+  const isOutOfStock = product.stock <= 0;
+
   const [selectedImage, setSelectedImage] = useState<string | undefined>(
     product.images?.[0] ?? product.image,
   );
@@ -166,7 +184,10 @@ function ProductDetails({ product }: { product: Product }) {
 
   const variant = product.variants?.[variantIdx];
 
-  const discount = pct(product.mrp, product.price);
+  const discount = pct(
+    variant?.mrp ?? product.mrp,
+    variant?.price ?? product.price,
+  );
 
   const userId = user?.id ?? (isGuest ? "guest" : "");
 
@@ -365,8 +386,8 @@ function ProductDetails({ product }: { product: Product }) {
             {product.unit}
           </div>
 
-          {/* Rating */}
-          <div className="mt-3 flex items-center gap-3">
+          {/* Rating + stock */}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <div className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-bold text-success">
               <Star className="h-3.5 w-3.5 fill-success" />
               {reviewSummary.average.toFixed(1)}
@@ -379,16 +400,16 @@ function ProductDetails({ product }: { product: Product }) {
                 : "ratings"}
             </div>
 
-            {product.stock > 0 ? (
+            {isOutOfStock ? (
+              <Badge variant="destructive">
+                Out of stock
+              </Badge>
+            ) : (
               <Badge
                 variant="secondary"
                 className="bg-success/10 text-success hover:bg-success/10"
               >
                 In stock
-              </Badge>
-            ) : (
-              <Badge variant="destructive">
-                Out of stock
               </Badge>
             )}
           </div>
@@ -468,34 +489,71 @@ function ProductDetails({ product }: { product: Product }) {
 
           {/* Cart / wishlist */}
           <div className="mt-5 flex gap-2">
-            <QuantityStepper
-              qty={qty}
-              size="md"
-              onAdd={() => {
-                void cart
-                  .add(product)
-                  .then(() =>
-                    toast.success(
-                      "Added to cart",
-                    ),
-                  );
-              }}
-              onInc={() =>
-                void cart.inc(product.id)
-              }
-              onDec={() =>
-                void cart.dec(product.id)
-              }
-              className="flex-1 sm:flex-none"
-            />
+            {isOutOfStock ? (
+              /*
+               * IMPORTANT:
+               *
+               * Never expose ADD or Go to cart while the
+               * product has zero stock.
+               *
+               * ProductAlertCard below handles:
+               * - back-in-stock subscription
+               * - price-drop subscription
+               * - existing subscription state
+               */
+              <div className="flex-1 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+                <div className="text-sm font-semibold text-foreground">
+                  Currently unavailable
+                </div>
+
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  We'll let you know when this product is available again.
+                </div>
+              </div>
+            ) : (
+              <>
+                <QuantityStepper
+                  qty={qty}
+                  size="md"
+                  onAdd={() => {
+                    void cart
+                      .add(product)
+                      .then(() =>
+                        toast.success(
+                          "Added to cart",
+                        ),
+                      );
+                  }}
+                  onInc={() =>
+                    void cart.inc(product.id)
+                  }
+                  onDec={() =>
+                    void cart.dec(product.id)
+                  }
+                  className="flex-1 sm:flex-none"
+                />
+
+                <Link
+                  to="/cart"
+                  className="inline-flex flex-1 items-center justify-center rounded-full border bg-surface-elevated px-5 py-2.5 text-sm font-semibold text-foreground hover:bg-muted sm:flex-none"
+                >
+                  Go to cart
+                </Link>
+              </>
+            )}
 
             <button
               type="button"
               onClick={() =>
                 void wishlist.toggle(product.id)
               }
-              className="grid h-10 w-10 place-items-center rounded-full border bg-surface-elevated hover:bg-muted"
-              aria-label="Wishlist"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-surface-elevated hover:bg-muted"
+              aria-label={
+                inW
+                  ? "Remove from wishlist"
+                  : "Add to wishlist"
+              }
+              aria-pressed={inW}
             >
               <Heart
                 className={
@@ -506,14 +564,10 @@ function ProductDetails({ product }: { product: Product }) {
                 }
               />
             </button>
-
-            <Link
-              to="/cart"
-              className="inline-flex flex-1 items-center justify-center rounded-full border bg-surface-elevated px-5 py-2.5 text-sm font-semibold text-foreground hover:bg-muted sm:flex-none"
-            >
-              Go to cart
-            </Link>
           </div>
+
+          {/* Product alerts */}
+          <ProductAlertCard product={product} />
 
           {/* Service benefits */}
           <div className="mt-6 grid grid-cols-3 gap-2">
