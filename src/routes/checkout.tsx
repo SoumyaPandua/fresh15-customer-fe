@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@/lib/next-router-compat";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, MapPin, CreditCard, Wallet, Clock } from "lucide-react";
+import { Check, MapPin, CreditCard, Wallet, Clock, Sparkles } from "lucide-react";
+import { loyaltyApi } from "@/lib/loyalty-api";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useCartBook } from "@/lib/hooks/use-cart-book";
@@ -36,6 +37,13 @@ function CheckoutPage() {
   const user = useAuth((s) => s.user);
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [payment, setPayment] = useState<"cod" | "razorpay">("razorpay");
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const loyaltyQ = useQuery({ queryKey: ["loyalty", token], enabled: Boolean(token), queryFn: () => loyaltyApi.get(token), staleTime: 15_000 });
+  const eligibleSubtotal = Math.max(0, totals.subtotal - totals.couponDiscount);
+  const maxLoyaltyPoints = Math.min(loyaltyQ.data?.wallet.balance ?? 0, Math.floor(eligibleSubtotal * ((loyaltyQ.data?.rules.MAX_REDEMPTION_PERCENT ?? 20) / 100) * (loyaltyQ.data?.rules.POINTS_PER_RUPEE_REDEEMED ?? 10)));
+  const pointsPerRupee = loyaltyQ.data?.rules.POINTS_PER_RUPEE_REDEEMED ?? 10;
+  const loyaltyDiscount = loyaltyPoints / pointsPerRupee;
+  const payableTotal = Math.max(0, totals.total - loyaltyDiscount);
 
   const slotsQuery = useQuery({
     queryKey: ["delivery-slots", activeAddressId],
@@ -107,6 +115,7 @@ function CheckoutPage() {
         notes: `Delivery slot: ${selectedSlot.label} (${selectedSlot.window})`,
         deliverySlotId: selectedSlot.slotId,
         deliveryDateKey: selectedSlot.dateKey,
+        loyaltyPoints,
       });
 
       if (payment === "cod") {
@@ -313,6 +322,19 @@ function CheckoutPage() {
             )}
           </section>
 
+          {/* FreshPoints */}
+          {token && loyaltyQ.data && (
+            <section className="rounded-2xl border bg-card p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div><h2 className="flex items-center gap-2 text-sm font-bold"><Sparkles className="h-4 w-4 text-primary" /> FreshPoints</h2><p className="mt-1 text-xs text-muted-foreground">{loyaltyQ.data.wallet.balance.toLocaleString("en-IN")} available · redeem up to {loyaltyQ.data.rules.MAX_REDEMPTION_PERCENT}%</p></div>
+                <Link to="/loyalty" className="text-xs font-semibold text-primary">View wallet</Link>
+              </div>
+              {maxLoyaltyPoints >= loyaltyQ.data.rules.MIN_REDEMPTION_POINTS ? (
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-primary/5 p-3"><div><div className="text-sm font-semibold">Save {inr(maxLoyaltyPoints / pointsPerRupee)}</div><div className="text-xs text-muted-foreground">Use {maxLoyaltyPoints} points</div></div><button type="button" onClick={() => setLoyaltyPoints((v) => v ? 0 : maxLoyaltyPoints)} className={"rounded-full px-4 py-2 text-xs font-bold " + (loyaltyPoints ? "border bg-background" : "bg-primary text-primary-foreground")}>{loyaltyPoints ? "Remove" : "Use points"}</button></div>
+              ) : <p className="mt-3 text-xs text-muted-foreground">Keep earning — minimum {loyaltyQ.data.rules.MIN_REDEMPTION_POINTS} points required to redeem.</p>}
+            </section>
+          )}
+
           {/* Payment */}
           <section className="rounded-2xl border bg-card p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -364,17 +386,18 @@ function CheckoutPage() {
                 success={totals.deliveryFee === 0}
               />
               <Row label="Taxes" value={inr(totals.taxes)} />
+              {loyaltyDiscount > 0 && <Row label="FreshPoints" value={`-${inr(loyaltyDiscount)}`} success />}
             </div>
             <div className="mt-3 flex items-center justify-between border-t pt-3">
               <span className="font-bold">Total</span>
-              <span className="text-xl font-black">{inr(totals.total)}</span>
+              <span className="text-xl font-black">{inr(payableTotal)}</span>
             </div>
             <button
               onClick={place}
               disabled={placing || !selectedSlot}
               className="mt-4 w-full rounded-full bg-primary py-3 text-sm font-bold text-primary-foreground shadow-soft hover:opacity-90 disabled:opacity-50"
             >
-              {placing ? "Placing order…" : `Place order · ${inr(totals.total)}`}
+              {placing ? "Placing order…" : `Place order · ${inr(payableTotal)}`}
             </button>
           </div>
         </div>

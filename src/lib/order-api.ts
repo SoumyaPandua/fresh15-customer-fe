@@ -188,6 +188,7 @@ export type CreateOrderInput = {
   notes?: string;
   deliverySlotId: string;
   deliveryDateKey: string;
+  loyaltyPoints?: number;
 };
 
 export type ReorderItem = {
@@ -259,6 +260,7 @@ export const orderApi = {
           notes: input.notes ?? "",
           deliverySlotId: input.deliverySlotId,
           deliveryDateKey: input.deliveryDateKey,
+          loyaltyPoints: input.loyaltyPoints ?? 0,
         }),
       },
       token,
