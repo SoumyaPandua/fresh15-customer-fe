@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@/lib/next-router-compat";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Tag, Trash2, Clock, ChevronRight } from "lucide-react";
+import { Tag, Trash2, Clock, ChevronRight, CalendarClock, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ProductArt } from "@/components/common/ProductArt";
@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { orderApi } from "@/lib/order-api";
 import { useAuth } from "@/lib/store/auth";
 import { toast } from "sonner";
+import { groceryListApi } from "@/lib/grocery-list-api";
 
 export const Route = createFileRoute("/cart")({
   head: () => ({
@@ -33,6 +34,7 @@ function CartPage() {
   const totals = cart.totals;
   const [code, setCode] = useState("");
   const [applying, setApplying] = useState(false);
+  const [savingWeekly, setSavingWeekly] = useState(false);
   const coupons = useQuery({ queryKey: ["coupons"], queryFn: api.getCoupons, enabled: !cart.isAuthed });
 
   async function apply(c: string) {
@@ -67,7 +69,7 @@ function CartPage() {
     return (
       <AppLayout>
         <h1 className="mb-4 text-2xl font-black tracking-tight sm:text-3xl">Your cart</h1>
-        <div className="space-y-3">
+      <div className="space-y-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-24 animate-pulse rounded-2xl border bg-muted/40" />
           ))}
@@ -92,6 +94,23 @@ function CartPage() {
   return (
     <AppLayout>
       <h1 className="mb-4 text-2xl font-black tracking-tight sm:text-3xl">Your cart</h1>
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><CalendarClock className="h-4 w-4" /></div>
+          <div><div className="text-sm font-bold">Make this your Weekly Essentials</div><div className="text-xs text-muted-foreground">Save these products and quantities for a one-tap repeat next week.</div></div>
+        </div>
+        {cart.isAuthed ? (
+          <button type="button" disabled={savingWeekly} onClick={async () => { setSavingWeekly(true); try { await groceryListApi.saveCart(token); toast.success("Weekly Essentials saved"); } catch (e) { toast.error(e instanceof Error ? e.message : "Could not save your basket"); } finally { setSavingWeekly(false); } }} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:opacity-60">
+            {savingWeekly ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
+            Save basket
+          </button>
+        ) : (
+          <Link to="/auth/login" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground">
+            <CalendarClock className="h-3.5 w-3.5" />
+            Sign in to save
+          </Link>
+        )}
+      </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
         <div className="space-y-4">
           <div className="flex items-center gap-2 rounded-2xl border bg-success/5 p-3 text-sm">
