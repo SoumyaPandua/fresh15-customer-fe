@@ -63,6 +63,7 @@ export function buildHomeSections(list: Product[]): HomeSections {
   };
 }
 
+
 export const api = {
   async getCategories(): Promise<Category[]> {
     return withCatalogFallback(() => catalogApi.getCategories(), () => demoCategories);
