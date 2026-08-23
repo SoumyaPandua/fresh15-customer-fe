@@ -22,7 +22,14 @@ export function useAddressBook() {
 
   const remote = query.data ?? [];
   const isAuthed = Boolean(token);
+
   const addresses: Address[] = isAuthed ? remote : local.addresses;
+
+  /*
+   * For authenticated customers the backend default address is authoritative.
+   * setActive() below optimistically updates the React Query cache so this
+   * value changes immediately instead of waiting for the PATCH response.
+   */
   const activeAddressId = isAuthed
     ? remote.find((a) => a.isDefault)?.id ?? remote[0]?.id ?? ""
     : local.activeAddressId;
@@ -33,59 +40,141 @@ export function useAddressBook() {
     mutationFn: (input: AddressInput) => addressApi.create(token, input),
     onSuccess: invalidate,
   });
+
   const updateM = useMutation({
-    mutationFn: (vars: { id: string; input: AddressInput }) => addressApi.update(token, vars.id, vars.input),
+    mutationFn: (vars: { id: string; input: AddressInput }) =>
+      addressApi.update(token, vars.id, vars.input),
     onSuccess: invalidate,
   });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => addressApi.remove(token, id),
     onSuccess: invalidate,
   });
+
   const defaultM = useMutation({
     mutationFn: (id: string) => addressApi.setDefault(token, id),
-    onSuccess: invalidate,
+
+    onMutate: async (id: string) => {
+      /*
+       * Optimistically update the shared address cache.
+       *
+       * Without this, TopBar can continue seeing the previous default
+       * address (for example 411001) until the PATCH request and subsequent
+       * refetch finish. That causes serviceability to be checked against
+       * the wrong pincode.
+       */
+      await qc.cancelQueries({
+        queryKey: ["addresses"],
+      });
+
+      const previous = qc.getQueryData<Address[]>(["addresses"]);
+
+      if (previous) {
+        qc.setQueryData<Address[]>(
+          ["addresses"],
+          previous.map((address) => ({
+            ...address,
+            isDefault: address.id === id,
+          })),
+        );
+      }
+
+      return { previous };
+    },
+
+    onError: (_error, _id, context) => {
+      if (context?.previous) {
+        qc.setQueryData<Address[]>(
+          ["addresses"],
+          context.previous,
+        );
+      }
+    },
+
+    onSettled: () => {
+      void invalidate();
+    },
   });
 
   return {
     isAuthed,
     addresses,
     activeAddressId,
-    /** MongoDB _id of the address that will be used for delivery (future Order API). */
-    activeAddress: addresses.find((a) => a.id === activeAddressId) ?? null,
+
+    activeAddress:
+      addresses.find((a) => a.id === activeAddressId) ?? null,
+
     isLoading: isAuthed && query.isLoading,
-    error: query.error instanceof Error ? query.error.message : null,
+
+    error:
+      query.error instanceof Error
+        ? query.error.message
+        : null,
+
     refetch: query.refetch,
-    busy: createM.isPending || updateM.isPending || deleteM.isPending || defaultM.isPending,
+
+    busy:
+      createM.isPending ||
+      updateM.isPending ||
+      deleteM.isPending ||
+      defaultM.isPending,
+
     async create(form: Omit<Address, "id">) {
       if (!isAuthed) {
         local.addAddress(form);
         return "Address added";
       }
-      const res = await createM.mutateAsync(toAddressInput(form, addresses.length === 0));
+
+      const res = await createM.mutateAsync(
+        toAddressInput(
+          form,
+          addresses.length === 0,
+        ),
+      );
+
       return res.message;
     },
-    async update(id: string, form: Omit<Address, "id">) {
+
+    async update(
+      id: string,
+      form: Omit<Address, "id">,
+    ) {
       if (!isAuthed) {
         local.updateAddress(id, form);
         return "Address updated";
       }
-      const res = await updateM.mutateAsync({ id, input: toAddressInput(form, form.isDefault ?? false) });
+
+      const res = await updateM.mutateAsync({
+        id,
+        input: toAddressInput(
+          form,
+          form.isDefault ?? false,
+        ),
+      });
+
       return res.message;
     },
+
     async remove(id: string) {
       if (!isAuthed) {
         local.deleteAddress(id);
         return "Address removed";
       }
+
       const res = await deleteM.mutateAsync(id);
+
       return res.message;
     },
+
     async setActive(id: string) {
       if (!isAuthed) {
         local.setActive(id);
         return "Active address updated";
       }
+
       const res = await defaultM.mutateAsync(id);
+
       return res.message;
     },
   };

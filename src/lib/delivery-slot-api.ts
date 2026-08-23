@@ -15,6 +15,7 @@ export type DeliverySlotOption = {
   cutoffAt: string;
   zone: { id: string; name: string };
   store: { id: string; name: string; code: string };
+  etaMinutes: number;
   workload: {
     zoneOrders: number;
     storeOrders: number;
@@ -26,8 +27,15 @@ export type DeliverySlotOption = {
 
 export type AvailableDeliverySlots = {
   addressId: string;
-  zone: { id: string; name: string };
-  store: { id: string; name: string; code: string };
+  serviceable: boolean;
+  matchedBy: string;
+  zone: { id: string; name: string; city?: string; fee: number; minOrder: number; serviceRadiusKm: number };
+  store: { id: string; name: string; code: string; distanceKm: number | null };
+  etaMinutes: number | null;
+  deliveryFee: number;
+  baseDeliveryFee: number;
+  freeDeliveryAbove: number;
+  minOrder: number;
   slots: DeliverySlotOption[];
   generatedAt: string;
 };

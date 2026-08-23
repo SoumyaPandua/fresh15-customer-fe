@@ -43,7 +43,6 @@ function CheckoutPage() {
   const maxLoyaltyPoints = Math.min(loyaltyQ.data?.wallet.balance ?? 0, Math.floor(eligibleSubtotal * ((loyaltyQ.data?.rules.MAX_REDEMPTION_PERCENT ?? 20) / 100) * (loyaltyQ.data?.rules.POINTS_PER_RUPEE_REDEEMED ?? 10)));
   const pointsPerRupee = loyaltyQ.data?.rules.POINTS_PER_RUPEE_REDEEMED ?? 10;
   const loyaltyDiscount = loyaltyPoints / pointsPerRupee;
-  const payableTotal = Math.max(0, totals.total - loyaltyDiscount);
 
   const slotsQuery = useQuery({
     queryKey: ["delivery-slots", activeAddressId],
@@ -54,6 +53,16 @@ function CheckoutPage() {
   });
   const slots = slotsQuery.data?.slots ?? [];
   const selectedSlot = slots.find((item) => `${item.slotId}:${item.dateKey}` === selectedSlotKey) ?? null;
+  const serviceability = slotsQuery.data;
+  const minimumOrder = Number(serviceability?.minOrder ?? 0);
+  const deliveryFee = serviceability
+    ? totals.subtotal >= Number(serviceability.freeDeliveryAbove ?? 500)
+      ? 0
+      : Number(serviceability.baseDeliveryFee ?? serviceability.deliveryFee ?? 0)
+    : totals.deliveryFee;
+  const orderBelowMinimum = minimumOrder > 0 && totals.subtotal < minimumOrder;
+  const effectiveTotal = Math.max(0, totals.subtotal - totals.couponDiscount + deliveryFee + totals.taxes - loyaltyDiscount);
+  const payableTotal = effectiveTotal;
 
   useEffect(() => {
     if (!slots.length) {
@@ -102,6 +111,10 @@ function CheckoutPage() {
     }
     if (!selectedSlot) {
       toast.error("Please select an available delivery slot.");
+      return;
+    }
+    if (orderBelowMinimum) {
+      toast.error(`Add ${inr(minimumOrder - totals.subtotal)} more to reach the minimum order.`);
       return;
     }
 
@@ -313,11 +326,11 @@ function CheckoutPage() {
               </div>
             )}
             {selectedSlot && (
-              <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-                Serving zone: <span className="font-medium text-foreground">{selectedSlot.zone.name}</span>
-                {" · "}Store: <span className="font-medium text-foreground">{selectedSlot.store.name}</span>
-                {" · "}Current partner capacity:{" "}
-                <span className="font-medium text-foreground">{selectedSlot.workload.partnerRemaining}</span>
+              <div className="mt-3 rounded-lg bg-muted/50 px-3 py-3 text-xs text-muted-foreground">
+                <div>Serving from <span className="font-medium text-foreground">{selectedSlot.store.name}</span>{serviceability?.store.distanceKm != null ? ` · ${serviceability.store.distanceKm.toFixed(1)} km away` : ""}</div>
+                <div className="mt-1">ETA <span className="font-medium text-foreground">{selectedSlot.etaMinutes} min</span> · Delivery {deliveryFee === 0 ? <span className="font-medium text-success">FREE</span> : <span className="font-medium text-foreground">{inr(deliveryFee)}</span>}</div>
+                {minimumOrder > 0 && <div className="mt-1">Minimum order <span className="font-medium text-foreground">{inr(minimumOrder)}</span></div>}
+                <div className="mt-1">Partner capacity remaining <span className="font-medium text-foreground">{selectedSlot.workload.partnerRemaining}</span></div>
               </div>
             )}
           </section>
@@ -382,8 +395,8 @@ function CheckoutPage() {
               {totals.couponDiscount > 0 && <Row label="Coupon" value={`-${inr(totals.couponDiscount)}`} success />}
               <Row
                 label="Delivery"
-                value={totals.deliveryFee === 0 ? "FREE" : inr(totals.deliveryFee)}
-                success={totals.deliveryFee === 0}
+                value={deliveryFee === 0 ? "FREE" : inr(deliveryFee)}
+                success={deliveryFee === 0}
               />
               <Row label="Taxes" value={inr(totals.taxes)} />
               {loyaltyDiscount > 0 && <Row label="FreshPoints" value={`-${inr(loyaltyDiscount)}`} success />}
@@ -392,9 +405,14 @@ function CheckoutPage() {
               <span className="font-bold">Total</span>
               <span className="text-xl font-black">{inr(payableTotal)}</span>
             </div>
+            {orderBelowMinimum && (
+              <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                Add {inr(minimumOrder - totals.subtotal)} more to reach the {inr(minimumOrder)} minimum order for this area.
+              </div>
+            )}
             <button
               onClick={place}
-              disabled={placing || !selectedSlot}
+              disabled={placing || !selectedSlot || orderBelowMinimum}
               className="mt-4 w-full rounded-full bg-primary py-3 text-sm font-bold text-primary-foreground shadow-soft hover:opacity-90 disabled:opacity-50"
             >
               {placing ? "Placing order…" : `Place order · ${inr(payableTotal)}`}

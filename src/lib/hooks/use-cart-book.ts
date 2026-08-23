@@ -6,6 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useCart, selectCartTotals, type CartItem } from "@/lib/store/cart";
 import type { Product } from "@/lib/types";
 import { type SubstitutionPreference } from "@/lib/substitution";
+import { useServiceability } from "@/lib/store/serviceability";
 
 export type CartLineUI = CartItem & { image?: string | undefined; stock?: number; isActive?: boolean };
 
@@ -37,6 +38,7 @@ export function useCartBook() {
     })),
   );
   const coupon = local.appliedCoupon;
+  const serviceability = useServiceability();
 
   const query = useQuery({
     queryKey: ["cart", token ?? "guest"],
@@ -75,7 +77,17 @@ export function useCartBook() {
       }))
     : local.items;
 
-  const totals = selectCartTotals({ items, appliedCoupon: coupon } as never);
+  const baseTotals = selectCartTotals({ items, appliedCoupon: coupon } as never);
+  const configuredFee = serviceability.baseDeliveryFee;
+  const freeAbove = serviceability.freeDeliveryAbove;
+  const deliveryFee = serviceability.serviceable
+    ? (baseTotals.subtotal >= freeAbove ? 0 : configuredFee)
+    : baseTotals.deliveryFee;
+  const totals = {
+    ...baseTotals,
+    deliveryFee,
+    total: Math.max(0, baseTotals.subtotal - baseTotals.couponDiscount + deliveryFee + baseTotals.taxes),
+  };
 
   const cartKey = ["cart", token ?? "guest"] as const;
   const setCart = (cart: CartSnapshot) => qc.setQueryData(cartKey, cart);

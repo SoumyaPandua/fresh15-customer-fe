@@ -6,7 +6,7 @@ import { useAddressBook } from "@/lib/hooks/use-address-book";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { api } from "@/lib/api";
+import { checkServiceability, type ServiceabilityResult } from "@/lib/serviceability-api";
 import { toast } from "sonner";
 import type { Address } from "@/lib/types";
 
@@ -42,16 +42,19 @@ function AddressesPage() {
   const [editing, setEditing] = useState<Address | null>(null);
   const [form, setForm] = useState<Omit<Address, "id">>(empty);
   const [checking, setChecking] = useState(false);
+  const [serviceability, setServiceability] = useState<ServiceabilityResult | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   function openNew() {
     setEditing(null);
     setForm(empty);
+    setServiceability(null);
     setOpen(true);
   }
   function openEdit(a: Address) {
     setEditing(a);
     setForm(a);
+    setServiceability(null);
     setOpen(true);
   }
   function useCurrentLocation() {
@@ -102,11 +105,12 @@ function AddressesPage() {
     }
     setChecking(true);
     try {
-      const r = await api.checkPincode(form.pincode);
-      if (!r.serviceable) {
-        toast.error("Sorry, we don't deliver to this pincode yet");
-        return;
-      }
+      const r = await checkServiceability({
+        pincode: form.pincode,
+        latitude: form.latitude,
+        longitude: form.longitude,
+      });
+      setServiceability(r);
       const msg = editing ? await book.update(editing.id, form) : await book.create(form);
       toast.success(msg);
       setOpen(false);
@@ -317,6 +321,13 @@ function AddressesPage() {
               />
             </div>
           </div>
+          {serviceability && (
+            <div className="mx-6 mb-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+              <div className="font-semibold">Delivery available</div>
+              <div className="mt-1 text-muted-foreground">{serviceability.store.name}{serviceability.store.distanceKm != null ? ` · ${serviceability.store.distanceKm.toFixed(1)} km away` : ""} · {serviceability.etaMinutes ? `${serviceability.etaMinutes} min ETA` : "Slots available"}</div>
+              <div className="mt-1 text-muted-foreground">Delivery {serviceability.deliveryFee === 0 ? "FREE" : `₹${serviceability.deliveryFee}`} · Minimum order ₹{serviceability.minOrder}</div>
+            </div>
+          )}
           <DialogFooter>
             <button onClick={() => setOpen(false)} className="rounded-full border px-4 py-2 text-sm">
               Cancel

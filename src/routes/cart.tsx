@@ -13,6 +13,7 @@ import { inr } from "@/lib/format";
 import { api } from "@/lib/api";
 import { orderApi } from "@/lib/order-api";
 import { useAuth } from "@/lib/store/auth";
+import { useServiceability } from "@/lib/store/serviceability";
 import { toast } from "sonner";
 import { groceryListApi } from "@/lib/grocery-list-api";
 
@@ -32,6 +33,8 @@ function CartPage() {
   const cart = useCartBook();
   const token = useAuth((s) => s.token);
   const totals = cart.totals;
+  const serviceability = useServiceability();
+  const orderBelowMinimum = serviceability.serviceable && serviceability.minOrder > 0 && totals.subtotal < serviceability.minOrder;
   const [code, setCode] = useState("");
   const [applying, setApplying] = useState(false);
   const [savingWeekly, setSavingWeekly] = useState(false);
@@ -113,11 +116,28 @@ function CartPage() {
       </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
         <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-2xl border bg-success/5 p-3 text-sm">
-            <Clock className="h-4 w-4 text-success" />
-            <span className="font-semibold text-success">Delivery in 12 minutes</span>
-            <span className="text-muted-foreground">· Shipping from Fresh15 Koregaon Park</span>
+          <div className={"flex items-start gap-2 rounded-2xl border p-3 text-sm " + (serviceability.serviceable ? "bg-success/5" : "bg-muted/40")}>
+            <Clock className={"mt-0.5 h-4 w-4 " + (serviceability.serviceable ? "text-success" : "text-muted-foreground")} />
+            {serviceability.serviceable ? (
+              <div>
+                <div className="font-semibold text-success">{serviceability.etaMinutes ? `Delivery in about ${serviceability.etaMinutes} minutes` : "Delivery available"}</div>
+                <div className="text-xs text-muted-foreground">
+                  Shipping from {serviceability.storeName || "your nearest Fresh15 store"}
+                  {serviceability.storeDistanceKm != null ? ` · ${serviceability.storeDistanceKm.toFixed(1)} km away` : ""}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="font-semibold">Delivery availability is checked at checkout</div>
+                <div className="text-xs text-muted-foreground">Select or add a saved delivery address to get a live ETA and store.</div>
+              </div>
+            )}
           </div>
+          {orderBelowMinimum && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
+              Add {inr(serviceability.minOrder - totals.subtotal)} more to reach the {inr(serviceability.minOrder)} minimum order for this delivery area.
+            </div>
+          )}
 
           <div className="overflow-hidden rounded-2xl border bg-card">
             {cart.items.map((it, idx) => (
