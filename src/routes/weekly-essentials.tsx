@@ -2,7 +2,7 @@
 import { createFileRoute, Link } from "@/lib/next-router-compat";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { CalendarClock, Check, ChevronRight, Loader2, Pin, PinOff, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { CalendarClock, Check, ChevronRight, Info, Loader2, Pin, PinOff, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -31,6 +31,7 @@ function WeeklyEssentialsPage() {
   const [editing, setEditing] = useState<GroceryList | null>(null);
   const [editName, setEditName] = useState("");
   const [editItems, setEditItems] = useState<GroceryListWriteItem[]>([]);
+  const [smartResult, setSmartResult] = useState<Awaited<ReturnType<typeof groceryListApi.createSmartWeekly>> | null>(null);
 
   const listsQ = useQuery({
     queryKey: ["grocery-lists", token],
@@ -49,7 +50,11 @@ function WeeklyEssentialsPage() {
 
   const smart = useMutation({
     mutationFn: () => groceryListApi.createSmartWeekly(token),
-    onSuccess: () => { refresh(); toast.success("Your smart Weekly Essentials basket is ready"); },
+    onSuccess: (result) => {
+      setSmartResult(result);
+      refresh();
+      toast.success("Your smart Weekly Essentials basket is ready");
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Not enough purchase history yet"),
   });
 
@@ -120,6 +125,29 @@ function WeeklyEssentialsPage() {
           </div>
           {pinned.length > 0 && (
             <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-primary"><Pin className="h-3.5 w-3.5 fill-current" /> {pinned.length} pinned basket{pinned.length === 1 ? "" : "s"} ready for a one-tap repeat</div>
+          )}
+          {smartResult && (
+            <div className="mt-4 rounded-2xl border border-primary/20 bg-background/70 p-4">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <div className="text-xs font-bold">Why these items?</div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    Fresh15 uses transparent rules — your delivered-order history, weekday buying pattern,
+                    saved preferences, current season and live stock. No AI is required to build this basket.
+                  </p>
+                  {smartResult.insights?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {smartResult.insights.slice(0, 5).map((item) => (
+                        <span key={item.productId} className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">
+                          {item.name}: {item.reasons[0] ?? "matches your routine"}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           )}
         </section>
 

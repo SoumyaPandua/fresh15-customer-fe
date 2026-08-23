@@ -37,6 +37,7 @@ function CheckoutPage() {
   const user = useAuth((s) => s.user);
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [payment, setPayment] = useState<"cod" | "razorpay">("razorpay");
+  const [cutoffRemaining, setCutoffRemaining] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const loyaltyQ = useQuery({ queryKey: ["loyalty", token], enabled: Boolean(token), queryFn: () => loyaltyApi.get(token), staleTime: 15_000 });
   const eligibleSubtotal = Math.max(0, totals.subtotal - totals.couponDiscount);
@@ -73,6 +74,36 @@ function CheckoutPage() {
       setSelectedSlotKey(`${slots[0].slotId}:${slots[0].dateKey}`);
     }
   }, [slots, selectedSlotKey]);
+
+  useEffect(() => {
+    if (!selectedSlot?.cutoffAt) {
+      setCutoffRemaining(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const diff = new Date(selectedSlot.cutoffAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setCutoffRemaining("Cutoff passed — refresh slots");
+        return;
+      }
+
+      const totalSeconds = Math.floor(diff / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      setCutoffRemaining(
+        hours > 0
+          ? `${hours}h ${String(minutes).padStart(2, "0")}m`
+          : `${minutes}m ${String(seconds).padStart(2, "0")}s`,
+      );
+    };
+
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [selectedSlot?.cutoffAt]);
   const [placing, setPlacing] = useState(false);
   const inFlight = useRef(false);
 
@@ -330,6 +361,11 @@ function CheckoutPage() {
                 <div>Serving from <span className="font-medium text-foreground">{selectedSlot.store.name}</span>{serviceability?.store.distanceKm != null ? ` · ${serviceability.store.distanceKm.toFixed(1)} km away` : ""}</div>
                 <div className="mt-1">ETA <span className="font-medium text-foreground">{selectedSlot.etaMinutes} min</span> · Delivery {deliveryFee === 0 ? <span className="font-medium text-success">FREE</span> : <span className="font-medium text-foreground">{inr(deliveryFee)}</span>}</div>
                 {minimumOrder > 0 && <div className="mt-1">Minimum order <span className="font-medium text-foreground">{inr(minimumOrder)}</span></div>}
+                {cutoffRemaining && (
+                  <div className={"mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-bold " + (cutoffRemaining.startsWith("Cutoff") ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
+                    {cutoffRemaining.startsWith("Cutoff") ? cutoffRemaining : `Order within ${cutoffRemaining} for this slot`}
+                  </div>
+                )}
                 <div className="mt-1">Partner capacity remaining <span className="font-medium text-foreground">{selectedSlot.workload.partnerRemaining}</span></div>
               </div>
             )}
@@ -405,6 +441,11 @@ function CheckoutPage() {
               <span className="font-bold">Total</span>
               <span className="text-xl font-black">{inr(payableTotal)}</span>
             </div>
+            <div className="mt-2 rounded-xl bg-muted/50 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              Total includes delivery and taxes shown above.
+              {loyaltyDiscount > 0 ? " FreshPoints savings are already included." : ""}
+              {selectedSlot ? ` Delivery is scheduled for ${selectedSlot.window}.` : ""}
+            </div>
             {orderBelowMinimum && (
               <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                 Add {inr(minimumOrder - totals.subtotal)} more to reach the {inr(minimumOrder)} minimum order for this area.
@@ -412,7 +453,7 @@ function CheckoutPage() {
             )}
             <button
               onClick={place}
-              disabled={placing || !selectedSlot || orderBelowMinimum}
+              disabled={placing || !selectedSlot || orderBelowMinimum || Boolean(cutoffRemaining?.startsWith("Cutoff passed"))}
               className="mt-4 w-full rounded-full bg-primary py-3 text-sm font-bold text-primary-foreground shadow-soft hover:opacity-90 disabled:opacity-50"
             >
               {placing ? "Placing order…" : `Place order · ${inr(payableTotal)}`}

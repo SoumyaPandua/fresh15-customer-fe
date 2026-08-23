@@ -32,6 +32,27 @@ export type GroceryList = {
 
 export type GroceryListWriteItem = { productId: string; quantity: number };
 
+export type SmartWeeklyResult = {
+  list: GroceryList;
+  created: boolean;
+  source: string;
+  generatedAt?: string;
+  rules?: {
+    purchaseHistory: boolean;
+    weekdayPattern: boolean;
+    preferences: boolean;
+    seasonality: boolean;
+    liveStock: boolean;
+    ai: boolean;
+  };
+  insights?: Array<{
+    productId: string;
+    name: string;
+    score: number;
+    reasons: string[];
+  }>;
+};
+
 export type GroceryListResponse = {
   added: Array<{ productId: string; name?: string; quantity: number }>;
   skipped: Array<{ productId: string; name?: string; reason: string }>;
@@ -53,7 +74,7 @@ export const groceryListApi = {
     return res.data;
   },
   async createSmartWeekly(token: string | null) {
-    const res = await authedRequest<{ list: GroceryList; created: boolean; source: string }>("/api/grocery-lists/smart-weekly", { method: "POST" }, token);
+    const res = await authedRequest<SmartWeeklyResult>("/api/grocery-lists/smart-weekly", { method: "POST" }, token);
     return res.data;
   },
   async update(token: string | null, id: string, input: Partial<Pick<GroceryList, "name" | "description" | "listType" | "repeatInterval" | "isPinned">> & { items?: GroceryListWriteItem[] }) {

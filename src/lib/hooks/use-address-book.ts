@@ -1,74 +1,82 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { addressApi, mapAddress, toAddressInput, type AddressInput } from "@/lib/address-api";
+import {
+  addressApi,
+  mapAddress,
+  toAddressInput,
+  type AddressInput,
+} from "@/lib/address-api";
 import { useAuth } from "@/lib/store/auth";
 import { useLocation } from "@/lib/store/location";
 import type { Address } from "@/lib/types";
 
-/**
- * Single source of truth for the customer address book.
- * Authenticated users read/write the real backend; guests keep the local store.
- */
 export function useAddressBook() {
   const token = useAuth((s) => s.token);
   const qc = useQueryClient();
   const local = useLocation();
 
+  const isAuthed = Boolean(token);
+
   const query = useQuery({
     queryKey: ["addresses"],
-    queryFn: async () => (await addressApi.list(token)).data.map(mapAddress),
-    enabled: Boolean(token),
+    queryFn: async () =>
+      (await addressApi.list(token)).data.map(mapAddress),
+    enabled: isAuthed,
     staleTime: 30_000,
   });
 
   const remote = query.data ?? [];
-  const isAuthed = Boolean(token);
 
-  const addresses: Address[] = isAuthed ? remote : local.addresses;
+  const addresses: Address[] = isAuthed
+    ? remote
+    : local.addresses;
 
-  /*
-   * For authenticated customers the backend default address is authoritative.
-   * setActive() below optimistically updates the React Query cache so this
-   * value changes immediately instead of waiting for the PATCH response.
-   */
   const activeAddressId = isAuthed
-    ? remote.find((a) => a.isDefault)?.id ?? remote[0]?.id ?? ""
+    ? remote.find((a) => a.isDefault)?.id ??
+      remote[0]?.id ??
+      ""
     : local.activeAddressId;
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["addresses"] });
+  const addressReady = !isAuthed || !query.isLoading;
+
+  const activeAddress =
+    addresses.find((a) => a.id === activeAddressId) ?? null;
+
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey: ["addresses"],
+    });
 
   const createM = useMutation({
-    mutationFn: (input: AddressInput) => addressApi.create(token, input),
+    mutationFn: (input: AddressInput) =>
+      addressApi.create(token, input),
     onSuccess: invalidate,
   });
 
   const updateM = useMutation({
-    mutationFn: (vars: { id: string; input: AddressInput }) =>
-      addressApi.update(token, vars.id, vars.input),
+    mutationFn: (vars: {
+      id: string;
+      input: AddressInput;
+    }) => addressApi.update(token, vars.id, vars.input),
     onSuccess: invalidate,
   });
 
   const deleteM = useMutation({
-    mutationFn: (id: string) => addressApi.remove(token, id),
+    mutationFn: (id: string) =>
+      addressApi.remove(token, id),
     onSuccess: invalidate,
   });
 
   const defaultM = useMutation({
-    mutationFn: (id: string) => addressApi.setDefault(token, id),
+    mutationFn: (id: string) =>
+      addressApi.setDefault(token, id),
 
     onMutate: async (id: string) => {
-      /*
-       * Optimistically update the shared address cache.
-       *
-       * Without this, TopBar can continue seeing the previous default
-       * address (for example 411001) until the PATCH request and subsequent
-       * refetch finish. That causes serviceability to be checked against
-       * the wrong pincode.
-       */
       await qc.cancelQueries({
         queryKey: ["addresses"],
       });
 
-      const previous = qc.getQueryData<Address[]>(["addresses"]);
+      const previous =
+        qc.getQueryData<Address[]>(["addresses"]);
 
       if (previous) {
         qc.setQueryData<Address[]>(
@@ -99,13 +107,13 @@ export function useAddressBook() {
 
   return {
     isAuthed,
+    addressReady,
     addresses,
     activeAddressId,
+    activeAddress,
 
-    activeAddress:
-      addresses.find((a) => a.id === activeAddressId) ?? null,
-
-    isLoading: isAuthed && query.isLoading,
+    isLoading:
+      isAuthed && query.isLoading,
 
     error:
       query.error instanceof Error
@@ -126,12 +134,13 @@ export function useAddressBook() {
         return "Address added";
       }
 
-      const res = await createM.mutateAsync(
-        toAddressInput(
-          form,
-          addresses.length === 0,
-        ),
-      );
+      const res =
+        await createM.mutateAsync(
+          toAddressInput(
+            form,
+            addresses.length === 0,
+          ),
+        );
 
       return res.message;
     },
@@ -145,13 +154,14 @@ export function useAddressBook() {
         return "Address updated";
       }
 
-      const res = await updateM.mutateAsync({
-        id,
-        input: toAddressInput(
-          form,
-          form.isDefault ?? false,
-        ),
-      });
+      const res =
+        await updateM.mutateAsync({
+          id,
+          input: toAddressInput(
+            form,
+            form.isDefault ?? false,
+          ),
+        });
 
       return res.message;
     },
@@ -162,7 +172,8 @@ export function useAddressBook() {
         return "Address removed";
       }
 
-      const res = await deleteM.mutateAsync(id);
+      const res =
+        await deleteM.mutateAsync(id);
 
       return res.message;
     },
@@ -173,7 +184,8 @@ export function useAddressBook() {
         return "Active address updated";
       }
 
-      const res = await defaultM.mutateAsync(id);
+      const res =
+        await defaultM.mutateAsync(id);
 
       return res.message;
     },
