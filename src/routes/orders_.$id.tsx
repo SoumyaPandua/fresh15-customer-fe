@@ -14,6 +14,7 @@ import {
   KeyRound,
   ShoppingCart,
   Loader2,
+  RefreshCcw,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProductArt } from "@/components/common/ProductArt";
@@ -31,6 +32,11 @@ import { useEffect, useState } from "react";
 import { substitutionBadge } from "@/lib/substitution";
 import { inr } from "@/lib/format";
 import type { Order } from "@/lib/types";
+import {
+  createRefundRequest,
+  getMyRefunds,
+  type CustomerRefund,
+} from "@/lib/refund-api";
 
 export const Route = createFileRoute("/orders_/$id")({
   head: ({ params }) => ({
@@ -60,6 +66,8 @@ const statusHeading: Record<Order["status"], string> = {
 };
 
 const ORDER_PROGRESS: Order["status"][] = ["placed", "packed", "out_for_delivery", "delivered"];
+const ACTIVE_REFUND_STATUSES = new Set(["REQUESTED", "APPROVED", "PROCESSING", "MANUAL_REQUIRED"]);
+const REFUNDABLE_REFUND_STATUSES = new Set(["REQUESTED", "APPROVED", "PROCESSING", "PROCESSED", "MANUAL_REQUIRED"]);
 
 function OrderDetail() {
   const { id } = Route.useParams();
@@ -94,12 +102,46 @@ function OrderDetail() {
   const [customerConfirming, setCustomerConfirming] = useState(false);
   const [reorderBusy, setReorderBusy] = useState<string | null>(null);
 
+  const refundQuery = useQuery({
+    queryKey: ["customer-refunds", token],
+    queryFn: () => getMyRefunds(token),
+    enabled: Boolean(token && order),
+    staleTime: 30_000,
+  });
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundMode, setRefundMode] = useState<"FULL" | "ITEMS">("FULL");
+  const [selectedRefundItems, setSelectedRefundItems] = useState<string[]>([]);
+
   const paymentPending =
     order?.paymentMethod === "razorpay" && order.paymentStatus !== "PAID" && order.status !== "cancelled";
   const paymentExpiresAt = order?.paymentExpiresAt ? Date.parse(order.paymentExpiresAt) : NaN;
   const remainingMs = Number.isFinite(paymentExpiresAt) ? Math.max(0, paymentExpiresAt - now) : 0;
   const remainingSeconds = Math.ceil(remainingMs / 1000);
   const paymentExpired = Boolean(paymentPending && Number.isFinite(paymentExpiresAt) && remainingMs <= 0);
+
+  const orderRefunds: CustomerRefund[] = (refundQuery.data ?? []).filter(
+    (refund) => refund.orderId?._id === order?.id,
+  );
+  const activeRefund = orderRefunds.find((refund) => ACTIVE_REFUND_STATUSES.has(refund.status));
+  const reservedRefundAmount = orderRefunds
+    .filter((refund) => REFUNDABLE_REFUND_STATUSES.has(refund.status))
+    .reduce((sum, refund) => sum + Number(refund.amount || 0), 0);
+  const remainingRefundable = Math.max(0, Number(order?.total || 0) - reservedRefundAmount);
+  const refundEligible = Boolean(
+    order &&
+      (order.status === "delivered" || order.status === "cancelled") &&
+      order.paymentStatus === "PAID" &&
+      !activeRefund &&
+      remainingRefundable > 0,
+  );
+  const selectedRefundAmount = order
+    ? order.items
+        .filter((item) => selectedRefundItems.includes(item.productId))
+        .reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0)
+    : 0;
+  const requestedRefundAmount = refundMode === "FULL" ? Math.min(Number(order?.total || 0), remainingRefundable) : selectedRefundAmount;
 
   useEffect(() => {
     if (!paymentPending || !Number.isFinite(paymentExpiresAt)) return;
@@ -221,6 +263,52 @@ function OrderDetail() {
     } finally {
       setReorderBusy(null);
     }
+  };
+
+  const submitRefund = async () => {
+    if (!token) return;
+    if (activeRefund) {
+      toast.info("This order already has a refund request being processed.");
+      return;
+    }
+    if (!refundReason.trim()) {
+      toast.error("Please tell us why you want a refund.");
+      return;
+    }
+    if (requestedRefundAmount <= 0) {
+      toast.error("Select at least one item or choose a full refund.");
+      return;
+    }
+    if (requestedRefundAmount > remainingRefundable + 0.01) {
+      toast.error(`Only ${inr(remainingRefundable)} remains refundable for this order.`);
+      return;
+    }
+
+    try {
+      setRefundBusy(true);
+      await createRefundRequest(token, {
+        orderId: order.id,
+        amount: Number(requestedRefundAmount.toFixed(2)),
+        reason: refundReason.trim(),
+      });
+      toast.success("Refund request submitted.");
+      setRefundOpen(false);
+      setRefundReason("");
+      setRefundMode("FULL");
+      setSelectedRefundItems([]);
+      await refundQuery.refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not submit refund request.");
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+
+  const openRefund = () => {
+    setRefundMode("FULL");
+    setSelectedRefundItems(order.items.map((item) => item.productId));
+    setRefundReason("");
+    setRefundOpen(true);
   };
 
   // Delivery may be ahead of the order record; never move the tracker backwards.
@@ -570,6 +658,38 @@ function OrderDetail() {
               {order.paymentStatus ? ` · ${order.paymentStatus}` : ""}
             </div>
           </div>
+
+          {refundEligible ? (
+            <button
+              type="button"
+              onClick={openRefund}
+              disabled={refundQuery.isLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 py-3 text-sm font-bold text-amber-700 hover:bg-amber-500/15 disabled:opacity-60 dark:text-amber-300"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Request refund
+            </button>
+          ) : activeRefund ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold">
+                <RefreshCcw className="h-4 w-4 text-amber-500" />
+                Refund {activeRefund.status.toLowerCase().replaceAll("_", " ")}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Your refund request for {inr(activeRefund.amount)} is already being processed.
+              </div>
+            </div>
+          ) : orderRefunds.some((refund) => refund.status === "PROCESSED") && remainingRefundable > 0 ? (
+            <button
+              type="button"
+              onClick={openRefund}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 py-3 text-sm font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Request remaining refund
+            </button>
+          ) : null}
+
           {order.status === "delivered" && (
             <button
               type="button"
@@ -587,6 +707,127 @@ function OrderDetail() {
           )}
         </div>
       </div>
+
+      {refundOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Request refund"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !refundBusy) setRefundOpen(false);
+          }}
+        >
+          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border bg-card p-5 shadow-2xl sm:max-w-lg sm:rounded-3xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black">Request a refund</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Order #{order.orderNumber ?? order.id}. Choose the full order or specific items.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !refundBusy && setRefundOpen(false)}
+                className="rounded-full border px-3 py-1 text-xs font-semibold hover:bg-muted"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setRefundMode("FULL")}
+                className={`rounded-2xl border p-4 text-left ${refundMode === "FULL" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+              >
+                <div className="text-sm font-bold">Full order</div>
+                <div className="mt-1 text-xs text-muted-foreground">Refund up to {inr(remainingRefundable)}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRefundMode("ITEMS")}
+                className={`rounded-2xl border p-4 text-left ${refundMode === "ITEMS" ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+              >
+                <div className="text-sm font-bold">Specific items</div>
+                <div className="mt-1 text-xs text-muted-foreground">Refund only the selected item totals</div>
+              </button>
+            </div>
+
+            {refundMode === "ITEMS" && (
+              <div className="mt-4 space-y-2">
+                {order.items.map((item) => {
+                  const checked = selectedRefundItems.includes(item.productId);
+                  return (
+                    <label
+                      key={item.productId}
+                      className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 ${checked ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => {
+                          setSelectedRefundItems((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, item.productId])]
+                              : current.filter((idValue) => idValue !== item.productId),
+                          );
+                        }}
+                        className="h-4 w-4 accent-primary"
+                      />
+                      <ProductArt
+                        emoji={item.emoji}
+                        src={item.image}
+                        alt={item.name}
+                        gradient={item.gradient}
+                        size="sm"
+                        className="h-10 w-10 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold">{item.name}</div>
+                        <div className="text-xs text-muted-foreground">Qty {item.qty}</div>
+                      </div>
+                      <div className="text-sm font-bold">{inr(item.price * item.qty)}</div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-4">
+              <label className="text-xs font-bold">Reason for refund</label>
+              <textarea
+                value={refundReason}
+                onChange={(event) => setRefundReason(event.target.value)}
+                maxLength={500}
+                rows={4}
+                placeholder="Tell us what went wrong with your order"
+                className="mt-2 w-full rounded-2xl border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+
+            <div className="mt-4 rounded-2xl bg-muted/60 p-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Refund amount</span>
+                <span className="text-lg font-black">{inr(Math.min(requestedRefundAmount, remainingRefundable))}</span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Remaining refundable balance: {inr(remainingRefundable)}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void submitRefund()}
+              disabled={refundBusy || requestedRefundAmount <= 0 || !refundReason.trim()}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60"
+            >
+              {refundBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+              {refundBusy ? "Submitting…" : "Submit refund request"}
+            </button>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }
