@@ -31,7 +31,7 @@ export type CustomerRefund = {
   } | null;
 };
 
-const authHeaders = (token: string | null) =>
+const authHeaders = (token: string | null): Record<string, string> =>
   token ? { Authorization: `Bearer ${token}` } : {};
 
 export async function getMyRefunds(token: string | null) {
