@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@/lib/next-router-compat";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tag, Trash2, Clock, ChevronRight, CalendarClock, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -30,6 +30,7 @@ export const Route = createFileRoute("/cart")({
 });
 
 function CartPage() {
+  const search = Route.useSearch<{ coupon?: string }>();
   const cart = useCartBook();
   const token = useAuth((s) => s.token);
   const totals = cart.totals;
@@ -66,6 +67,13 @@ function CartPage() {
       setApplying(false);
     }
   }
+
+  useEffect(() => {
+    const couponFromOffer = search.coupon?.trim().toUpperCase();
+    if (!couponFromOffer || cart.isLoading || cart.appliedCoupon?.code || applying) return;
+    void apply(couponFromOffer);
+  }, [search.coupon, cart.isLoading, cart.appliedCoupon?.code]);
+
 
 
   if (cart.isLoading) {

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@/lib/next-router-compat";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Clock, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Clock, Sparkles, Tag, Zap } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { SectionHeader } from "@/components/common/SectionHeader";
 import { ProductCard } from "@/components/common/ProductCard";
@@ -27,6 +27,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.getCategories });
   const banners = useQuery({ queryKey: ["banners"], queryFn: api.getBanners });
+  const offers = useQuery({ queryKey: ["storefront-offers", "HOME"], queryFn: api.getOffers, staleTime: 60_000 });
   // Home sections are derived from the single catalog query — no second fetch.
   const allProducts = useQuery({ queryKey: ["products", undefined], queryFn: () => api.getProducts() });
   const products = allProducts.data;
@@ -132,25 +133,70 @@ function HomePage() {
       <section className="mb-8">
         {banners.isLoading ? (
           <Skeleton className="h-32 w-full rounded-2xl" />
-        ) : (
+        ) : banners.data && banners.data.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-3">
-            {banners.data?.map((b) => (
+            {banners.data.map((b) => (
               <Link
                 key={b.id}
                 to={b.href}
-                className={`group relative flex items-center gap-4 overflow-hidden rounded-2xl p-5 text-white shadow-card transition-all hover:-translate-y-0.5 gradient-${b.gradient}`}
+                className={`group relative flex min-h-32 items-center gap-4 overflow-hidden rounded-2xl p-5 text-white shadow-card transition-all hover:-translate-y-0.5 gradient-${b.gradient}`}
               >
-                <div className="min-w-0 flex-1">
+                {b.image && (
+                  <img src={b.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" />
+                )}
+                <div className="absolute inset-0 bg-black/20" />
+                <div className="relative min-w-0 flex-1">
                   <div className="text-xs font-semibold uppercase tracking-widest opacity-90">{b.cta}</div>
                   <div className="text-lg font-black leading-tight">{b.title}</div>
                   <div className="mt-1 line-clamp-2 text-xs opacity-90">{b.subtitle}</div>
                 </div>
-                <div className="text-6xl transition-transform group-hover:scale-110">{b.emoji}</div>
+                {!b.image && <div className="relative text-6xl transition-transform group-hover:scale-110">{b.emoji}</div>}
               </Link>
             ))}
           </div>
-        )}
+        ) : null}
       </section>
+
+      {/* Admin-managed offers */}
+      {offers.data && offers.data.length > 0 && (
+        <section className="mb-8">
+          <SectionHeader
+            title={<span className="inline-flex items-center gap-2"><Tag className="h-5 w-5 text-primary" /> Offers for you</span>}
+            subtitle="Fresh15 promotions"
+            href={{ to: "/search" }}
+          />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {offers.data.slice(0, 6).map((offer) => {
+              const href =
+                offer.targetType === "CATEGORY" && offer.targetValue
+                  ? `/category/${encodeURIComponent(offer.targetValue)}`
+                  : offer.targetType === "PRODUCT" && offer.targetValue
+                    ? `/product/${encodeURIComponent(offer.targetValue)}`
+                    : offer.targetType === "SEARCH"
+                      ? `/search${offer.targetValue ? `?q=${encodeURIComponent(offer.targetValue)}` : ""}`
+                      : offer.couponCode
+                        ? `/cart?coupon=${encodeURIComponent(offer.couponCode)}`
+                        : "/search";
+
+              return (
+                <Link key={offer.id} to={href} className="rounded-2xl border bg-card p-4 transition hover:-translate-y-0.5 hover:shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black">{offer.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{offer.description}</div>
+                    </div>
+                    {offer.discount && <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">{offer.discount}</span>}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-xs font-semibold text-primary">
+                    <span>{offer.ctaText}</span>
+                    {offer.couponCode && <span className="font-mono">{offer.couponCode}</span>}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Flash offers */}
       <section className="mb-8">

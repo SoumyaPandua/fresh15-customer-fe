@@ -34,14 +34,36 @@ export type Product = {
   tags?: ("bestseller" | "seasonal" | "recommended" | "flash")[];
 };
 
+export type BannerTargetType = "NONE" | "SEARCH" | "CATEGORY" | "PRODUCT" | "OFFER";
+
 export type Banner = {
   id: string;
   title: string;
   subtitle: string;
   cta: string;
   href: string;
+  image?: string;
+  targetType?: BannerTargetType;
+  targetValue?: string;
+  priority?: number;
   gradient: "warm" | "cool" | "fresh" | "primary";
   emoji: string;
+};
+
+export type StorefrontOffer = {
+  id: string;
+  title: string;
+  description: string;
+  discount: string;
+  category: string;
+  placement: string;
+  ctaText: string;
+  targetType: BannerTargetType;
+  targetValue: string;
+  couponCode?: string;
+  priority: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
 };
 
 export type Address = {

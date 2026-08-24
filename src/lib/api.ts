@@ -2,11 +2,12 @@
 // Everything else below is still centralized mock data (cart, orders, coupons…).
 import { products as demoProducts } from "./mock/products";
 import { categories as demoCategories } from "./mock/categories";
-import { banners } from "./mock/banners";
+import { banners as demoBanners } from "./mock/banners";
 import { orders } from "./mock/orders";
 import { coupons } from "./mock/coupons";
 import { catalogApi, CatalogApiError, type ProductQuery } from "./catalog-api";
-import type { Category, Coupon, Order, Product } from "./types";
+import type { Banner, Category, Coupon, Order, Product, StorefrontOffer, BannerTargetType } from "./types";
+import { apiRequest } from "./http";
 
 // Artificial latency only exists to exercise loading states while developing —
 // production builds resolve immediately.
@@ -64,6 +65,17 @@ export function buildHomeSections(list: Product[]): HomeSections {
 }
 
 
+function targetToHref(type: BannerTargetType | undefined, value?: string) {
+  const v = String(value ?? "").trim();
+  switch (type) {
+    case "CATEGORY": return v ? `/category/${encodeURIComponent(v)}` : "/search";
+    case "PRODUCT": return v ? `/product/${encodeURIComponent(v)}` : "/search";
+    case "SEARCH": return `/search${v ? `?q=${encodeURIComponent(v)}` : ""}`;
+    case "OFFER": return "/search";
+    default: return "/search";
+  }
+}
+
 export const api = {
   async getCategories(): Promise<Category[]> {
     return withCatalogFallback(() => catalogApi.getCategories(), () => demoCategories);
@@ -72,9 +84,48 @@ export const api = {
     const list = await api.getCategories();
     return list.find((c) => c.slug === slug || c.id === slug);
   },
-  async getBanners() {
-    await delay(200);
-    return banners;
+  async getBanners(): Promise<Banner[]> {
+    try {
+      const data = await apiRequest<any[]>("/api/banner/active?placement=HOME_PROMO");
+      return (Array.isArray(data) ? data : []).map((b: any, index: number) => ({
+        id: String(b._id ?? b.id ?? index),
+        title: String(b.title ?? ""),
+        subtitle: String(b.subtitle ?? ""),
+        cta: String(b.ctaText ?? "Shop now"),
+        href: targetToHref(b.targetType as BannerTargetType, b.targetValue),
+        image: typeof b.image === "string" ? b.image : undefined,
+        targetType: b.targetType,
+        targetValue: b.targetValue,
+        priority: Number(b.priority ?? 0),
+        gradient: ["warm", "cool", "fresh", "primary"][index % 4] as Banner["gradient"],
+        emoji: "🛒",
+      }));
+    } catch {
+      await delay(100);
+      return demoBanners;
+    }
+  },
+  async getOffers(): Promise<StorefrontOffer[]> {
+    try {
+      const data = await apiRequest<any[]>("/api/offer/active?placement=HOME");
+      return (Array.isArray(data) ? data : []).map((o: any) => ({
+        id: String(o._id ?? o.id),
+        title: String(o.title ?? ""),
+        description: String(o.description ?? ""),
+        discount: String(o.discount ?? ""),
+        category: String(o.category ?? ""),
+        placement: String(o.placement ?? "HOME"),
+        ctaText: String(o.ctaText ?? "View offer"),
+        targetType: (o.targetType ?? "SEARCH") as BannerTargetType,
+        targetValue: String(o.targetValue ?? ""),
+        couponCode: o.couponCode ? String(o.couponCode) : undefined,
+        priority: Number(o.priority ?? 0),
+        startsAt: o.startsAt ?? null,
+        endsAt: o.endsAt ?? null,
+      }));
+    } catch {
+      return [];
+    }
   },
   async getProducts(filter?: ProductQuery): Promise<Product[]> {
     return withCatalogFallback(
