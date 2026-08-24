@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@/lib/next-router-compat";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { User, MapPin, CreditCard, Bell, BellRing, HelpCircle, Shield, FileText, LogOut, ChevronRight, Edit3, Camera, KeyRound, Gift } from "lucide-react";
+import { User, MapPin, CreditCard, Bell, BellRing, HelpCircle, Shield, FileText, LogOut, ChevronRight, Edit3, Camera, KeyRound, Gift, ReceiptText } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/lib/store/auth";
 import { Input } from "@/components/ui/input";
@@ -203,6 +203,7 @@ function ProfilePage() {
           <Tile to="/notifications" icon={<Bell className="h-5 w-5" />} title="Notifications" sub="Order & offer updates" />
           <Tile to="/alerts" icon={<BellRing className="h-5 w-5" />} title="My alerts" sub="Restock & price drops" />
           <Tile to="/loyalty" icon={<Gift className="h-5 w-5" />} title="FreshPoints" sub="Rewards & referrals" />
+          <Tile to="/refunds" icon={<ReceiptText className="h-5 w-5" />} title="My refunds" sub="Track refund requests" />
         </div>
 
         <div className="overflow-hidden rounded-2xl border bg-card">
