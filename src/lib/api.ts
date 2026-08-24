@@ -2,7 +2,6 @@
 // Everything else below is still centralized mock data (cart, orders, coupons…).
 import { products as demoProducts } from "./mock/products";
 import { categories as demoCategories } from "./mock/categories";
-import { banners as demoBanners } from "./mock/banners";
 import { orders } from "./mock/orders";
 import { coupons } from "./mock/coupons";
 import { catalogApi, CatalogApiError, type ProductQuery } from "./catalog-api";
@@ -87,42 +86,45 @@ export const api = {
   async getBanners(): Promise<Banner[]> {
     try {
       const data = await apiRequest<any[]>("/api/banner/active?placement=HOME_PROMO");
-      return (Array.isArray(data) ? data : []).map((b: any, index: number) => ({
-        id: String(b._id ?? b.id ?? index),
-        title: String(b.title ?? ""),
-        subtitle: String(b.subtitle ?? ""),
-        cta: String(b.ctaText ?? "Shop now"),
-        href: targetToHref(b.targetType as BannerTargetType, b.targetValue),
-        image: typeof b.image === "string" ? b.image : undefined,
-        targetType: b.targetType,
-        targetValue: b.targetValue,
-        priority: Number(b.priority ?? 0),
-        gradient: ["warm", "cool", "fresh", "primary"][index % 4] as Banner["gradient"],
-        emoji: "🛒",
-      }));
+      return (Array.isArray(data) ? data : [])
+        .map((b: any, index: number) => ({
+          id: String(b._id ?? b.id ?? index),
+          title: String(b.title ?? ""),
+          subtitle: String(b.subtitle ?? ""),
+          cta: String(b.ctaText ?? "Shop now"),
+          href: targetToHref(b.targetType as BannerTargetType, b.targetValue),
+          image: typeof b.image === "string" ? b.image : undefined,
+          targetType: b.targetType,
+          targetValue: b.targetValue,
+          priority: Number(b.priority ?? 0),
+          gradient: ["warm", "cool", "fresh", "primary"][index % 4] as Banner["gradient"],
+          emoji: "🛒",
+        }))
+        .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     } catch {
-      await delay(100);
-      return demoBanners;
+      return [];
     }
   },
-  async getOffers(): Promise<StorefrontOffer[]> {
+  async getOffers(placement = "HOME"): Promise<StorefrontOffer[]> {
     try {
-      const data = await apiRequest<any[]>("/api/offer/active?placement=HOME");
-      return (Array.isArray(data) ? data : []).map((o: any) => ({
-        id: String(o._id ?? o.id),
-        title: String(o.title ?? ""),
-        description: String(o.description ?? ""),
-        discount: String(o.discount ?? ""),
-        category: String(o.category ?? ""),
-        placement: String(o.placement ?? "HOME"),
-        ctaText: String(o.ctaText ?? "View offer"),
-        targetType: (o.targetType ?? "SEARCH") as BannerTargetType,
-        targetValue: String(o.targetValue ?? ""),
-        couponCode: o.couponCode ? String(o.couponCode) : undefined,
-        priority: Number(o.priority ?? 0),
-        startsAt: o.startsAt ?? null,
-        endsAt: o.endsAt ?? null,
-      }));
+      const data = await apiRequest<any[]>(`/api/offer/active?placement=${encodeURIComponent(placement)}`);
+      return (Array.isArray(data) ? data : [])
+        .map((o: any) => ({
+          id: String(o._id ?? o.id),
+          title: String(o.title ?? ""),
+          description: String(o.description ?? ""),
+          discount: String(o.discount ?? ""),
+          category: String(o.category ?? ""),
+          placement: String(o.placement ?? placement),
+          ctaText: String(o.ctaText ?? "View offer"),
+          targetType: (o.targetType ?? "SEARCH") as BannerTargetType,
+          targetValue: String(o.targetValue ?? ""),
+          couponCode: o.couponCode ? String(o.couponCode) : undefined,
+          priority: Number(o.priority ?? 0),
+          startsAt: o.startsAt ?? null,
+          endsAt: o.endsAt ?? null,
+        }))
+        .sort((a, b) => b.priority - a.priority);
     } catch {
       return [];
     }
