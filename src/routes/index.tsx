@@ -29,7 +29,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.getCategories });
   const banners = useQuery({ queryKey: ["banners"], queryFn: api.getBanners });
-  const offers = useQuery({ queryKey: ["storefront-offers", "HOME"], queryFn: api.getOffers, staleTime: 60_000 });
+  const offers = useQuery({ queryKey: ["storefront-offers", "HOME"], queryFn: () => api.getOffers("HOME"), staleTime: 60_000 });
   // Home sections are derived from the single catalog query — no second fetch.
   const allProducts = useQuery({ queryKey: ["products", undefined], queryFn: () => api.getProducts() });
   const products = allProducts.data;

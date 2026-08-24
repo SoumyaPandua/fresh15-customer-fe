@@ -22,7 +22,7 @@ export const Route = createFileRoute("/offers")({
 });
 
 function OffersPage() {
-  const query = useQuery({ queryKey: ["storefront-offers", "HOME", "all"], queryFn: api.getOffers, staleTime: 60_000 });
+  const query = useQuery({ queryKey: ["storefront-offers", "HOME", "all"], queryFn: () => api.getOffers("HOME"), staleTime: 60_000 });
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = async (code: string) => {
