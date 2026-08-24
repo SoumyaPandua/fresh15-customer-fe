@@ -4,21 +4,20 @@ import { createFileRoute, Link } from "@/lib/next-router-compat";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
-  CheckCircle2,
-  Clock3,
-  Copy,
+  ChevronDown,
+  ChevronUp,
+  Clock,
   ExternalLink,
+  History,
   Loader2,
   RefreshCcw,
   Search,
-  XCircle,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useAuth } from "@/lib/store/auth";
 import {
   createRefundRequest,
-  getMyRefund,
   getMyRefunds,
   type CustomerRefund,
   type RefundStatus,
@@ -32,88 +31,133 @@ export const Route = createFileRoute("/refunds")({
       { title: "Refunds — Fresh15" },
       {
         name: "description",
-        content: "View, request and track all Fresh15 refunds.",
+        content: "Request and track Fresh15 refunds.",
       },
     ],
   }),
   component: RefundsPage,
 });
 
-const STATUS_OPTIONS: Array<{ value: "ALL" | RefundStatus; label: string }> = [
-  { value: "ALL", label: "All" },
-  { value: "REQUESTED", label: "Requested" },
-  { value: "APPROVED", label: "Approved" },
-  { value: "PROCESSING", label: "Processing" },
-  { value: "PROCESSED", label: "Processed" },
-  { value: "MANUAL_REQUIRED", label: "Manual settlement" },
-  { value: "FAILED", label: "Failed" },
-  { value: "REJECTED", label: "Rejected" },
-  { value: "REVERSED", label: "Reversed" },
-];
+const STATUS_LABELS: Record<RefundStatus, string> = {
+  REQUESTED: "Requested",
+  APPROVED: "Approved",
+  PROCESSING: "Processing",
+  PROCESSED: "Processed",
+  FAILED: "Failed",
+  REJECTED: "Rejected",
+  MANUAL_REQUIRED: "Manual action required",
+  REVERSED: "Reversed",
+};
 
-const ACTIVE = new Set<RefundStatus>(["REQUESTED", "APPROVED", "PROCESSING", "MANUAL_REQUIRED"]);
-
-const statusLabel = (status: RefundStatus) =>
-  status.toLowerCase().replaceAll("_", " ").replace(/^\w/, (c) => c.toUpperCase());
-
-const statusClass = (status: RefundStatus) => {
-  if (status === "PROCESSED") return "bg-success/10 text-success";
-  if (status === "FAILED" || status === "REJECTED" || status === "REVERSED") return "bg-destructive/10 text-destructive";
-  return "bg-warning/10 text-warning";
+const STATUS_CLASS: Record<RefundStatus, string> = {
+  REQUESTED: "bg-amber-500/10 text-amber-700",
+  APPROVED: "bg-blue-500/10 text-blue-700",
+  PROCESSING: "bg-blue-500/10 text-blue-700",
+  PROCESSED: "bg-green-500/10 text-green-700",
+  FAILED: "bg-red-500/10 text-red-700",
+  REJECTED: "bg-red-500/10 text-red-700",
+  MANUAL_REQUIRED: "bg-orange-500/10 text-orange-700",
+  REVERSED: "bg-purple-500/10 text-purple-700",
 };
 
 function RefundsPage() {
   const token = useAuth((state) => state.token);
-  const [filter, setFilter] = useState<"ALL" | RefundStatus>("ALL");
-  const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   const [orderId, setOrderId] = useState("");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const refundsQuery = useQuery({
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | RefundStatus>(
+    "ALL",
+  );
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const refundsQuery = useQuery<CustomerRefund[]>({
     queryKey: ["customer-refunds", token],
     enabled: Boolean(token),
-    queryFn: async () => (await getMyRefunds(token)).data,
-    staleTime: 15_000,
-  });
-
-  const detailQuery = useQuery({
-    queryKey: ["customer-refund", token, selectedId],
-    enabled: Boolean(token && selectedId),
-    queryFn: async () => (await getMyRefund(token, selectedId!)).data,
+    queryFn: () => getMyRefunds(token),
     staleTime: 15_000,
   });
 
   const refunds = refundsQuery.data ?? [];
 
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return refunds.filter((refund) => {
-      const matchesStatus = filter === "ALL" || refund.status === filter;
-      const haystack = [
-        refund.orderId?.orderNumber,
-        refund.orderId?._id,
+  const filteredRefunds = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return refunds.filter((refund: CustomerRefund) => {
+      const matchesStatus =
+        statusFilter === "ALL" || refund.status === statusFilter;
+
+      if (!matchesStatus) {
+        return false;
+      }
+
+      if (!term) {
+        return true;
+      }
+
+      const orderNumber =
+        refund.orderId?.orderNumber ??
+        refund.orderId?._id ??
+        "";
+
+      const searchable = [
+        orderNumber,
         refund._id,
         refund.reason,
-        refund.razorpayRefundId,
+        refund.razorpayRefundId ?? "",
+        refund.manualReference ?? "",
+        refund.status,
       ]
-        .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      return matchesStatus && (!needle || haystack.includes(needle));
-    });
-  }, [filter, refunds, search]);
 
-  const summary = useMemo(() => ({
-    total: refunds.length,
-    active: refunds.filter((r) => ACTIVE.has(r.status)).length,
-    processed: refunds.filter((r) => r.status === "PROCESSED").length,
-    refundedAmount: refunds
-      .filter((r) => r.status === "PROCESSED")
-      .reduce((sum, r) => sum + Number(r.amount || 0), 0),
-  }), [refunds]);
+      return searchable.includes(term);
+    });
+  }, [refunds, search, statusFilter]);
+
+  const summary = useMemo(() => {
+    const total = refunds.length;
+
+    const processing = refunds.filter(
+      (refund: CustomerRefund) =>
+        refund.status === "REQUESTED" ||
+        refund.status === "APPROVED" ||
+        refund.status === "PROCESSING" ||
+        refund.status === "MANUAL_REQUIRED",
+    ).length;
+
+    const completed = refunds.filter(
+      (refund: CustomerRefund) => refund.status === "PROCESSED",
+    ).length;
+
+    const failed = refunds.filter(
+      (refund: CustomerRefund) =>
+        refund.status === "FAILED" ||
+        refund.status === "REJECTED" ||
+        refund.status === "REVERSED",
+    ).length;
+
+    const returnedAmount = refunds
+      .filter(
+        (refund: CustomerRefund) => refund.status === "PROCESSED",
+      )
+      .reduce(
+        (sum: number, refund: CustomerRefund) =>
+          sum + Number(refund.amount || 0),
+        0,
+      );
+
+    return {
+      total,
+      processing,
+      completed,
+      failed,
+      returnedAmount,
+    };
+  }, [refunds]);
 
   if (!token) {
     return (
@@ -122,7 +166,10 @@ function RefundsPage() {
           emoji="🔐"
           title="Login required"
           description="Please log in to manage refunds."
-          cta={{ to: "/auth/login", label: "Login" }}
+          cta={{
+            to: "/auth/login",
+            label: "Login",
+          }}
         />
       </AppLayout>
     );
@@ -133,25 +180,36 @@ function RefundsPage() {
       toast.error("Order ID, amount and reason are required.");
       return;
     }
+
     const parsedAmount = Number(amount);
+
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       toast.error("Enter a valid refund amount.");
       return;
     }
+
     try {
       setBusy(true);
+
       await createRefundRequest(token, {
         orderId: orderId.trim(),
-        amount: Number(parsedAmount.toFixed(2)),
+        amount: parsedAmount,
         reason: reason.trim(),
       });
+
       toast.success("Refund request submitted.");
+
       setOrderId("");
       setAmount("");
       setReason("");
+
       await refundsQuery.refetch();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not submit refund request.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not submit refund request.",
+      );
     } finally {
       setBusy(false);
     }
@@ -159,86 +217,266 @@ function RefundsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto w-full max-w-5xl space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Refunds & returns</h1>
-            <p className="mt-1 text-sm text-muted-foreground">View every refund, understand its status and track the money back to your payment method.</p>
-          </div>
-          <button type="button" onClick={() => void refundsQuery.refetch()} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold">
-            <RefreshCcw className={`h-4 w-4 ${refundsQuery.isFetching ? "animate-spin" : ""}`} /> Refresh
-          </button>
+      <div className="mx-auto w-full max-w-4xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">
+            Refunds
+          </h1>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            Request refunds and track all your refund activity in one place.
+          </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Summary label="All refunds" value={summary.total} />
-          <Summary label="In progress" value={summary.active} />
-          <Summary label="Completed" value={summary.processed} />
-          <Summary label="Returned to you" value={inr(summary.refundedAmount)} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard
+            label="All refunds"
+            value={summary.total}
+          />
+
+          <SummaryCard
+            label="In progress"
+            value={summary.processing}
+          />
+
+          <SummaryCard
+            label="Completed"
+            value={summary.completed}
+          />
+
+          <SummaryCard
+            label="Returned"
+            value={inr(summary.returnedAmount)}
+          />
         </div>
 
         <div className="rounded-3xl border bg-surface-elevated p-5">
-          <div className="mb-3 text-sm font-bold">Find a refund</div>
-          <div className="flex flex-col gap-3 lg:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search order number, refund ID or reason" className="h-10 w-full rounded-xl border bg-background pl-9 pr-3 text-sm outline-none" />
+          <div className="mb-4 text-sm font-bold">
+            Request a refund
+          </div>
+
+          <div className="grid gap-3">
+            <input
+              value={orderId}
+              onChange={(event) =>
+                setOrderId(event.target.value)
+              }
+              placeholder="Order ID"
+              className="rounded-xl border bg-background px-3 py-2 text-sm outline-none"
+            />
+
+            <input
+              value={amount}
+              onChange={(event) =>
+                setAmount(event.target.value)
+              }
+              placeholder="Refund amount"
+              inputMode="decimal"
+              className="rounded-xl border bg-background px-3 py-2 text-sm outline-none"
+            />
+
+            <textarea
+              value={reason}
+              onChange={(event) =>
+                setReason(event.target.value)
+              }
+              placeholder="Reason for refund"
+              maxLength={500}
+              rows={4}
+              className="rounded-xl border bg-background px-3 py-2 text-sm outline-none"
+            />
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void submit()}
+              className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60"
+            >
+              {busy ? (
+                <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+              ) : (
+                "Submit refund request"
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border bg-surface-elevated p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-bold">
+                Refund history
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                View every refund request and its current status.
+              </div>
             </div>
-            <select value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | RefundStatus)} className="h-10 rounded-xl border bg-background px-3 text-sm">
-              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+
+            <button
+              type="button"
+              disabled={refundsQuery.isFetching}
+              onClick={() => void refundsQuery.refetch()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-60"
+            >
+              <RefreshCcw
+                className={`h-3.5 w-3.5 ${
+                  refundsQuery.isFetching
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+              Refresh
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_180px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Search order, refund ID or reason"
+                className="h-10 w-full rounded-xl border bg-background pl-9 pr-3 text-sm outline-none"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as "ALL" | RefundStatus,
+                )
+              }
+              className="h-10 rounded-xl border bg-background px-3 text-sm outline-none"
+            >
+              <option value="ALL">All statuses</option>
+
+              {Object.entries(STATUS_LABELS).map(
+                ([value, label]) => (
+                  <option
+                    key={value}
+                    value={value}
+                  >
+                    {label}
+                  </option>
+                ),
+              )}
             </select>
           </div>
-        </div>
 
-        <div className="rounded-3xl border bg-surface-elevated p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-bold">Your refund history</div>
-              <div className="text-xs text-muted-foreground">{filtered.length} result{filtered.length === 1 ? "" : "s"}</div>
-            </div>
-          </div>
+          <div className="mt-4">
+            {refundsQuery.isLoading ? (
+              <div className="h-32 animate-pulse rounded-2xl bg-muted" />
+            ) : refundsQuery.isError ? (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 text-center">
+                <div className="text-sm font-semibold">
+                  Couldn’t load your refunds
+                </div>
 
-          {refundsQuery.isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((x) => <div key={x} className="h-28 animate-pulse rounded-2xl bg-muted" />)}
-            </div>
-          ) : refundsQuery.isError ? (
-            <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm">
-              <div className="font-bold">Couldn’t load your refunds</div>
-              <div className="mt-1 text-muted-foreground">{refundsQuery.error instanceof Error ? refundsQuery.error.message : "Please try again."}</div>
-              <button type="button" onClick={() => void refundsQuery.refetch()} className="mt-3 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground">Try again</button>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="rounded-2xl bg-background p-8 text-center text-sm text-muted-foreground">
-              {refunds.length === 0 ? "You do not have any refunds yet." : "No refunds match your search or filter."}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map((refund) => (
-                <RefundCard key={refund._id} refund={refund} selected={selectedId === refund._id} onSelect={() => setSelectedId(selectedId === refund._id ? null : refund._id)} />
-              ))}
-            </div>
-          )}
-        </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Please try again.
+                </div>
 
-        {selectedId && (
-          <RefundDetails
-            refund={detailQuery.data ?? refunds.find((r) => r._id === selectedId) ?? null}
-            loading={detailQuery.isLoading}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
+                <button
+                  type="button"
+                  onClick={() => void refundsQuery.refetch()}
+                  className="mt-3 rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : filteredRefunds.length === 0 ? (
+              <div className="rounded-2xl border bg-background p-8 text-center">
+                <History className="mx-auto h-8 w-8 text-muted-foreground" />
 
-        <div className="rounded-3xl border bg-surface-elevated p-5">
-          <div className="mb-1 text-sm font-bold">Need a refund for another eligible order?</div>
-          <div className="mb-4 text-xs text-muted-foreground">Refunds are available for eligible delivered or cancelled paid orders. The amount cannot exceed the remaining refundable balance.</div>
-          <div className="grid gap-3">
-            <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="Order ID" className="rounded-xl border bg-background px-3 py-2 text-sm outline-none" />
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Refund amount" inputMode="decimal" className="rounded-xl border bg-background px-3 py-2 text-sm outline-none" />
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Tell us what went wrong" maxLength={500} rows={4} className="rounded-xl border bg-background px-3 py-2 text-sm outline-none" />
-            <button type="button" disabled={busy} onClick={() => void submit()} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
-              {busy ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Submit refund request"}
-            </button>
+                <div className="mt-3 text-sm font-bold">
+                  {refunds.length === 0
+                    ? "No refund requests yet"
+                    : "No matching refunds"}
+                </div>
+
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {refunds.length === 0
+                    ? "Your refund activity will appear here."
+                    : "Try changing your search or status filter."}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredRefunds.map(
+                  (refund: CustomerRefund) => {
+                    const expanded =
+                      expandedId === refund._id;
+
+                    const orderNumber =
+                      refund.orderId?.orderNumber ??
+                      refund.orderId?._id ??
+                      "Order";
+
+                    return (
+                      <div
+                        key={refund._id}
+                        className="overflow-hidden rounded-2xl border bg-background"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedId(
+                              expanded
+                                ? null
+                                : refund._id,
+                            )
+                          }
+                          className="w-full p-4 text-left"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold">
+                                  {orderNumber}
+                                </span>
+
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${STATUS_CLASS[refund.status]}`}
+                                >
+                                  {STATUS_LABELS[refund.status]}
+                                </span>
+                              </div>
+
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Refund ID: {refund._id}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 text-right">
+                              <div className="text-sm font-black">
+                                {inr(refund.amount)}
+                              </div>
+
+                              {expanded ? (
+                                <ChevronUp className="ml-auto mt-1 h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="ml-auto mt-1 h-4 w-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </div>
+                        </button>
+
+                        {expanded && (
+                          <RefundDetails
+                            refund={refund}
+                          />
+                        )}
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -246,94 +484,213 @@ function RefundsPage() {
   );
 }
 
-function Summary({ label, value }: { label: string; value: number | string }) {
-  return <div className="rounded-2xl border bg-surface-elevated p-4"><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 text-xl font-black">{value}</div></div>;
-}
+function RefundDetails({
+  refund,
+}: {
+  refund: CustomerRefund;
+}) {
+  const orderNumber =
+    refund.orderId?.orderNumber ??
+    refund.orderId?._id;
 
-function RefundCard({ refund, selected, onSelect }: { refund: CustomerRefund; selected: boolean; onSelect: () => void }) {
   return (
-    <button type="button" onClick={onSelect} className={`w-full rounded-2xl border p-4 text-left transition hover:bg-muted/40 ${selected ? "border-primary ring-2 ring-primary/10" : ""}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold">{refund.orderId?.orderNumber ?? refund.orderId?._id ?? "Order"}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{new Date(refund.createdAt).toLocaleString("en-IN")}</div>
-        </div>
-        <div className="text-right">
-          <div className="text-base font-black">{inr(refund.amount)}</div>
-          <span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${statusClass(refund.status)}`}>{statusLabel(refund.status)}</span>
-        </div>
+    <div className="border-t bg-muted/20 p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Detail
+          label="Reason"
+          value={refund.reason || "—"}
+        />
+
+        <Detail
+          label="Requested"
+          value={formatDate(refund.createdAt)}
+        />
+
+        <Detail
+          label="Processed"
+          value={
+            refund.processedAt
+              ? formatDate(refund.processedAt)
+              : "Not processed yet"
+          }
+        />
+
+        <Detail
+          label="Payment method"
+          value={
+            refund.orderId?.paymentMethod ??
+            "—"
+          }
+        />
+
+        {refund.razorpayRefundId && (
+          <Detail
+            label="Razorpay refund ID"
+            value={refund.razorpayRefundId}
+          />
+        )}
+
+        {refund.manualReference && (
+          <Detail
+            label="Manual refund reference"
+            value={refund.manualReference}
+          />
+        )}
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>{refund.reason}</span>
-        {refund.razorpayRefundId && <span>Refund ID: {refund.razorpayRefundId}</span>}
+
+      {refund.rejectionReason && (
+        <div className="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+          <div className="text-xs font-bold text-destructive">
+            Refund reason / rejection
+          </div>
+
+          <div className="mt-1 text-xs text-muted-foreground">
+            {refund.rejectionReason}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 rounded-xl border bg-background p-3">
+        <div className="mb-3 flex items-center gap-2 text-xs font-bold">
+          <Clock className="h-3.5 w-3.5 text-primary" />
+          Refund status
+        </div>
+
+        <RefundTimeline status={refund.status} />
       </div>
-    </button>
+
+      {orderNumber && (
+        <div className="mt-3">
+          <Link
+            to={`/orders/${orderNumber}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          >
+            View order
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 
-function RefundDetails({ refund, loading, onClose }: { refund: CustomerRefund | null; loading: boolean; onClose: () => void }) {
-  if (loading && !refund) return <div className="h-64 animate-pulse rounded-3xl bg-muted" />;
-  if (!refund) return null;
+function RefundTimeline({
+  status,
+}: {
+  status: RefundStatus;
+}) {
+  const steps: RefundStatus[] = [
+    "REQUESTED",
+    "APPROVED",
+    "PROCESSING",
+    "PROCESSED",
+  ];
 
-  const history = refund.statusHistory?.length
-    ? refund.statusHistory
-    : [{ status: "REQUESTED" as RefundStatus, at: refund.createdAt }, ...(refund.processedAt && refund.status !== "REQUESTED" ? [{ status: refund.status, at: refund.processedAt }] : [])];
+  if (
+    status === "REJECTED" ||
+    status === "FAILED" ||
+    status === "REVERSED"
+  ) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="h-2.5 w-2.5 rounded-full bg-destructive" />
+
+        <span className="text-xs font-semibold text-destructive">
+          {STATUS_LABELS[status]}
+        </span>
+      </div>
+    );
+  }
+
+  const currentIndex = steps.indexOf(status);
 
   return (
-    <section className="rounded-3xl border bg-surface-elevated p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Refund details</div>
-          <h2 className="mt-1 text-xl font-black">{inr(refund.amount)} · {statusLabel(refund.status)}</h2>
-        </div>
-        <button type="button" onClick={onClose} className="rounded-xl border px-3 py-1.5 text-xs font-semibold">Close</button>
-      </div>
+    <div className="space-y-2">
+      {steps.map(
+        (step: RefundStatus, index: number) => {
+          const active = index <= currentIndex;
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl bg-background p-4">
-          <div className="text-xs text-muted-foreground">Order</div>
-          <div className="mt-1 font-bold">{refund.orderId?.orderNumber ?? refund.orderId?._id ?? "—"}</div>
-          {refund.orderId?._id && <a href={`/orders/${refund.orderId._id}`} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary">View order <ExternalLink className="h-3 w-3" /></a>}
-        </div>
-        <div className="rounded-2xl bg-background p-4">
-          <div className="text-xs text-muted-foreground">Payment</div>
-          <div className="mt-1 font-bold">{refund.orderId?.paymentMethod ?? "—"}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Refunds are returned to the original payment source for online payments.</div>
-        </div>
-      </div>
+          return (
+            <div
+              key={step}
+              className="flex items-center gap-2"
+            >
+              <div
+                className={`h-2.5 w-2.5 rounded-full ${
+                  active
+                    ? "bg-primary"
+                    : "bg-muted-foreground/25"
+                }`}
+              />
 
-      <div className="mt-5 rounded-2xl bg-background p-4">
-        <div className="mb-4 text-sm font-bold">Refund timeline</div>
-        <div className="space-y-4">
-          {history.map((event, index) => {
-            const isLast = index === history.length - 1;
-            return <div key={`${event.status}-${event.at}-${index}`} className="relative flex gap-3">
-              <div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full ${event.status === "PROCESSED" ? "bg-success/10 text-success" : event.status === "FAILED" || event.status === "REJECTED" || event.status === "REVERSED" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
-                {event.status === "PROCESSED" ? <CheckCircle2 className="h-4 w-4" /> : event.status === "FAILED" || event.status === "REJECTED" || event.status === "REVERSED" ? <XCircle className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-bold">{statusLabel(event.status)}</div>
-                <div className="text-xs text-muted-foreground">{new Date(event.at).toLocaleString("en-IN")}</div>
-                {!isLast && <div className="mt-3 h-px bg-border" />}
-              </div>
-            </div>;
-          })}
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2">
-        <Info label="Reason" value={refund.reason} />
-        <Info label="Refund reference" value={refund.razorpayRefundId ?? refund.manualReference ?? refund._id} copy />
-        {refund.rejectionReason && <Info label="Why it was rejected/failed" value={refund.rejectionReason} />}
-        {refund.processedAt && <Info label="Processed at" value={new Date(refund.processedAt).toLocaleString("en-IN")} />}
-      </div>
-    </section>
+              <span
+                className={`text-xs ${
+                  active
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {STATUS_LABELS[step]}
+              </span>
+            </div>
+          );
+        },
+      )}
+    </div>
   );
 }
 
-function Info({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
-  const copyValue = async () => {
-    try { await navigator.clipboard.writeText(value); toast.success("Copied"); } catch { toast.error("Could not copy"); }
-  };
-  return <div className="rounded-2xl border p-3"><div className="text-muted-foreground">{label}</div><div className="mt-1 flex items-center justify-between gap-2 font-semibold"><span className="break-all">{value}</span>{copy && <button type="button" onClick={() => void copyValue()} aria-label={`Copy ${label}`}><Copy className="h-3.5 w-3.5 text-muted-foreground" /></button>}</div></div>;
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="rounded-2xl border bg-surface-elevated p-4">
+      <div className="text-xs text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="mt-1 text-xl font-black">
+        {typeof value === "number"
+          ? value.toLocaleString("en-IN")
+          : value}
+      </div>
+    </div>
+  );
+}
+
+function Detail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="mt-0.5 break-words text-xs font-medium">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
