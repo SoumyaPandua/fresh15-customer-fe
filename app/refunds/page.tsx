@@ -1,3 +1,3 @@
+"use client";
 import { Route } from "@/routes/refunds";
-
-export default Route.options.component;
+export default function Page() { return <Route.component />; }
