@@ -30,7 +30,7 @@ export const Route = createFileRoute("/cart")({
 });
 
 function CartPage() {
-  const search = Route.useSearch<{ coupon?: string }>();
+  const search = Route.useSearch() as { coupon?: string };
   const cart = useCartBook();
   const token = useAuth((s) => s.token);
   const totals = cart.totals;
@@ -73,8 +73,6 @@ function CartPage() {
     if (!couponFromOffer || cart.isLoading || cart.appliedCoupon?.code || applying) return;
     void apply(couponFromOffer);
   }, [search.coupon, cart.isLoading, cart.appliedCoupon?.code]);
-
-
 
   if (cart.isLoading) {
     return (
