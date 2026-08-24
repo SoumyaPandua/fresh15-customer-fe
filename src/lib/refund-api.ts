@@ -21,6 +21,7 @@ export type CustomerRefund = {
   manualReference?: string;
   createdAt: string;
   processedAt?: string | null;
+  statusHistory?: Array<{ status: RefundStatus; at: string }>;
   orderId?: {
     _id: string;
     orderNumber?: string;
@@ -36,6 +37,13 @@ const authHeaders = (token: string | null): Record<string, string> =>
 
 export async function getMyRefunds(token: string | null) {
   return apiRequest<CustomerRefund[]>("/api/refund/mine", {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+}
+
+export async function getMyRefund(token: string | null, refundId: string) {
+  return apiRequest<CustomerRefund>(`/api/refund/mine/${refundId}`, {
     method: "GET",
     headers: authHeaders(token),
   });
