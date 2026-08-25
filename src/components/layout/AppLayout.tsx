@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
-import { Fresh15AiAssistant } from "@/components/common/Fresh15AiAssistant";
+import { Fresh15AiAssistant } from "../common/Fresh15AiAssistant";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
