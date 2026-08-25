@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
+import { Fresh15AiAssistant } from "@/components/common/Fresh15AiAssistant";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6">{children}</div>
       </main>
       <BottomNav />
+      <Fresh15AiAssistant />
     </div>
   );
 }
