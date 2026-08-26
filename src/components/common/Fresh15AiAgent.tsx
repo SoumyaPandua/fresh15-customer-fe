@@ -188,18 +188,15 @@ export function Fresh15AiAgent() {
 
       setConversationId(response.conversationId);
 
-      const successfulCartMutation = (response.actions ?? []).some(
-        (action) =>
-          action.success &&
-          (
-            action.tool === "add_to_cart" ||
-            action.tool === "remove_from_cart" ||
-            action.tool === "update_cart_quantity" ||
-            action.tool === "add_reorder_list_to_cart"
-          ),
-      );
-
-      if (successfulCartMutation) {
+      if (response.actions?.some((action) =>
+        action.success &&
+        [
+          "add_to_cart",
+          "remove_from_cart",
+          "update_cart_quantity",
+          "add_reorder_list_to_cart",
+        ].includes(action.tool),
+      )) {
         await queryClient.invalidateQueries({
           queryKey: ["cart", authenticatedToken],
         });
@@ -309,7 +306,7 @@ export function Fresh15AiAgent() {
         type="button"
         aria-label="Open Fresh15 AI Agent"
         onClick={() => setOpen(true)}
-        className="fixed bottom-[84px] right-5 z-[69] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-lg transition hover:-translate-y-0.5 hover:border-primary hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="fixed bottom-[88px] right-6 z-[71] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-lg transition hover:-translate-y-0.5 hover:border-primary hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
       >
         <WandSparkles className="h-4 w-4 text-primary" />
         Fresh15 Agent
