@@ -6,8 +6,7 @@ import { sendAiAgent, type AgentResponse } from "@/lib/ai-agent-api";
 import { toast } from "sonner";
 
 export function Fresh15AiAgent() {
-  const auth = useAuth;
-  const token = auth.token;
+  const token = useAuth((state) => state.token);
   const [open,setOpen]=useState(false);
   const [input,setInput]=useState("");
   const [loading,setLoading]=useState(false);

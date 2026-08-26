@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 import { Fresh15AiAssistant } from "../common/Fresh15AiAssistant";
+import { Fresh15AiAgent } from "../common/Fresh15AiAgent";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </main>
       <BottomNav />
       <Fresh15AiAssistant />
+      <Fresh15AiAgent />
     </div>
   );
 }
