@@ -188,20 +188,6 @@ export function Fresh15AiAgent() {
 
       setConversationId(response.conversationId);
 
-      if (response.actions?.some((action) =>
-        action.success &&
-        [
-          "add_to_cart",
-          "remove_from_cart",
-          "update_cart_quantity",
-          "add_reorder_list_to_cart",
-        ].includes(action.tool),
-      )) {
-        await queryClient.invalidateQueries({
-          queryKey: ["cart", authenticatedToken],
-        });
-      }
-
       setMessages((current) => [
         ...current,
         {
@@ -215,6 +201,15 @@ export function Fresh15AiAgent() {
       setPendingConfirmation(
         response.confirmation ?? null,
       );
+
+      if (response.actions?.some((action) =>
+        action.success &&
+        ["add_to_cart", "remove_from_cart", "update_cart_quantity", "add_reorder_list_to_cart"].includes(action.tool)
+      )) {
+        await queryClient.invalidateQueries({
+          queryKey: ["cart", authenticatedToken],
+        });
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -306,7 +301,7 @@ export function Fresh15AiAgent() {
         type="button"
         aria-label="Open Fresh15 AI Agent"
         onClick={() => setOpen(true)}
-        className="fixed bottom-[88px] right-6 z-[71] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-lg transition hover:-translate-y-0.5 hover:border-primary hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="fixed bottom-5 right-5 z-[71] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-lg transition hover:-translate-y-0.5 hover:border-primary hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
       >
         <WandSparkles className="h-4 w-4 text-primary" />
         Fresh15 Agent
@@ -315,7 +310,7 @@ export function Fresh15AiAgent() {
       {open && (
         <section
           aria-label="Fresh15 AI Agent"
-          className="fixed bottom-20 right-5 z-[69] flex h-[min(680px,78dvh)] max-h-[78dvh] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
+          className="fixed bottom-20 right-5 z-[71] flex h-[min(680px,78dvh)] max-h-[78dvh] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
           onWheel={(event) => event.stopPropagation()}
           onTouchMove={(event) => event.stopPropagation()}
         >
