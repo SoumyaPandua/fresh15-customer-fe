@@ -3,6 +3,7 @@ import { Bot, Send, X, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/store/auth";
 import { sendAiMessage, type AiMessage } from "@/lib/ai-chat-api";
 import { toast } from "sonner";
+import { Fresh15AiAgent } from "./Fresh15AiAgent";
 
 const starter: AiMessage[] = [{ role:"assistant", content:"Hi! I’m Fresh15 AI. I can help with products, offers, cart, orders, delivery, refunds, payments and grocery suggestions." }];
 
@@ -28,6 +29,7 @@ export function Fresh15AiAssistant() {
   }
 
   return <>
+    <Fresh15AiAgent />
     <style jsx global>{`
       @keyframes aiFloat {
         0%, 100% { transform: translateY(0); }
