@@ -1,6 +1,7 @@
  "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Check,
@@ -137,6 +138,7 @@ function summaryText(confirmation: AgentConfirmation): string[] {
 
 export function Fresh15AiAgent() {
   const token = useAuth((state) => state.token);
+  const queryClient = useQueryClient();
 
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -185,6 +187,23 @@ export function Fresh15AiAgent() {
       );
 
       setConversationId(response.conversationId);
+
+      const successfulCartMutation = (response.actions ?? []).some(
+        (action) =>
+          action.success &&
+          (
+            action.tool === "add_to_cart" ||
+            action.tool === "remove_from_cart" ||
+            action.tool === "update_cart_quantity" ||
+            action.tool === "add_reorder_list_to_cart"
+          ),
+      );
+
+      if (successfulCartMutation) {
+        await queryClient.invalidateQueries({
+          queryKey: ["cart", authenticatedToken],
+        });
+      }
 
       setMessages((current) => [
         ...current,
