@@ -3,6 +3,7 @@ import { create } from "zustand";
 export type ServiceabilityStore = {
   addressKey: string;
   serviceable: boolean;
+  isLoading: boolean;
   baseDeliveryFee: number;
   freeDeliveryAbove: number;
   minOrder: number;
@@ -17,6 +18,7 @@ export type ServiceabilityStore = {
 const initial = {
   addressKey: "",
   serviceable: false,
+  isLoading: false,
   baseDeliveryFee: 25,
   freeDeliveryAbove: 199,
   minOrder: 0,

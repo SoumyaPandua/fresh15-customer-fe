@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Address } from "../types";
-import { addresses as seed } from "../mock/addresses";
 
 type LocationState = {
   pincode: string;
@@ -18,16 +17,19 @@ type LocationState = {
 export const useLocation = create<LocationState>()(
   persist(
     (set, get) => ({
-      pincode: "411001",
-      city: "Koregaon Park, Pune",
-      addresses: seed,
-      activeAddressId: seed[0].id,
-      setPincode: (pincode, city) => set({ pincode, city: city ?? get().city }),
+      pincode: "",
+      city: "",
+      addresses: [],
+      activeAddressId: "",
+      setPincode: (pincode, city) => set({ pincode: pincode.trim(), city: city ?? get().city }),
       addAddress: (a) => {
-        const id = `a${Date.now()}`;
-        set({ addresses: [...get().addresses, { ...a, id }] });
+        const id = `guest-${Date.now()}`;
+        const next = [...get().addresses, { ...a, id }];
+        set({ addresses: next, activeAddressId: get().activeAddressId || id, pincode: a.pincode, city: a.city });
       },
-      updateAddress: (id, patch) => set({ addresses: get().addresses.map((a) => (a.id === id ? { ...a, ...patch } : a)) }),
+      updateAddress: (id, patch) => set({
+        addresses: get().addresses.map((a) => a.id === id ? { ...a, ...patch } : a),
+      }),
       deleteAddress: (id) => {
         const list = get().addresses.filter((a) => a.id !== id);
         set({
@@ -35,8 +37,15 @@ export const useLocation = create<LocationState>()(
           activeAddressId: get().activeAddressId === id ? list[0]?.id ?? "" : get().activeAddressId,
         });
       },
-      setActive: (id) => set({ activeAddressId: id }),
+      setActive: (id) => {
+        const address = get().addresses.find((item) => item.id === id);
+        set({
+          activeAddressId: id,
+          pincode: address?.pincode ?? get().pincode,
+          city: address?.city ?? get().city,
+        });
+      },
     }),
-    { name: "fresh15-location" },
+    { name: "fresh15-location-v2" },
   ),
 );
