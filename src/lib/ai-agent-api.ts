@@ -15,12 +15,18 @@ export type AgentProduct = {
   units?: string[];
   stock?: number;
   inStock?: boolean;
+  url?: string;
 };
 
 export type AgentWidget =
   | {
       type: "PRODUCT_LIST";
-      payload: { products: AgentProduct[]; intent?: string };
+      payload: {
+        query?: string;
+        products: AgentProduct[];
+        intent?: string;
+        linksOnly?: boolean;
+      };
     }
   | {
       type: "UNIT_PICKER";
@@ -158,6 +164,17 @@ async function request<T>(
   }
 
   return payload.data as T;
+}
+
+export async function discoverCustomerProducts(
+  token: string,
+  query: string,
+) {
+  return request<AgentResponse>(
+    token,
+    "/api/ai/customer-product-discovery",
+    { query },
+  );
 }
 
 export function sendCustomerAgent(

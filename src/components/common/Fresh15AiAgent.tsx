@@ -18,31 +18,29 @@ import { useAiAgent } from "@/lib/store/ai-agent";
 import { paymentApi } from "@/lib/order-api";
 import type { AgentProduct, AgentWidget } from "@/lib/ai-agent-api";
 import { toast } from "sonner";
-
 import { loadRazorpay } from "@/lib/razorpay";
-
 
 function ProductList({
   widget,
-  onSelect,
 }: {
   widget: Extract<AgentWidget, { type: "PRODUCT_LIST" }>;
-  onSelect: (productId: string) => void;
 }) {
   return (
     <div className="mt-3 space-y-2">
       {widget.payload.products.map((product) => (
-        <button
+        <a
           key={product.id}
-          type="button"
-          onClick={() => onSelect(product.id)}
+          href={
+            product.url ||
+            `/products/${encodeURIComponent(product.slug || product.id)}`
+          }
           className="flex w-full items-center gap-3 rounded-2xl border bg-background p-3 text-left transition hover:border-primary"
         >
           <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted">
             {product.image ? (
               <img
                 src={product.image}
-                alt=""
+                alt={product.name}
                 className="h-full w-full object-cover"
               />
             ) : (
@@ -60,7 +58,7 @@ function ProductList({
           </div>
 
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </button>
+        </a>
       ))}
     </div>
   );
@@ -192,17 +190,7 @@ function WidgetRenderer({
 
   switch (widget.type) {
     case "PRODUCT_LIST":
-      return (
-        <ProductList
-          widget={widget}
-          onSelect={(productId) =>
-            onAction({
-              type: "PRODUCT_SELECTED",
-              payload: { productId },
-            })
-          }
-        />
-      );
+      return <ProductList widget={widget} />;
 
     case "UNIT_PICKER":
       return (
@@ -265,7 +253,6 @@ function WidgetRenderer({
       return (
         <div className="mt-3 rounded-2xl border bg-card p-3 text-xs">
           <div className="font-bold">Order summary</div>
-
           <div className="mt-2 space-y-1.5">
             {items.map((item, index) => (
               <div
@@ -283,12 +270,17 @@ function WidgetRenderer({
           </div>
 
           <div className="mt-2 flex justify-between border-t pt-2 font-bold">
-            <span>Total before final fees</span>
-            <span>₹{Number(payload.subtotal || 0).toFixed(2)}</span>
+            <span>Subtotal</span>
+            <span>
+              ₹{Number(payload.subtotal || 0).toFixed(2)}
+            </span>
           </div>
 
           <div className="mt-1 text-muted-foreground">
-            Payment: {String(payload.paymentMethod || "") === "ONLINE" ? "Razorpay" : "Cash on Delivery"}
+            Payment:{" "}
+            {String(payload.paymentMethod || "") === "ONLINE"
+              ? "Razorpay"
+              : "Cash on Delivery"}
           </div>
 
           <button
@@ -350,6 +342,11 @@ function WidgetRenderer({
         </div>
       );
 
+    case "CART_SUMMARY":
+    case "WISHLIST":
+    case "ORDER_LIST":
+      return null;
+
     default:
       return null;
   }
@@ -382,7 +379,10 @@ export function Fresh15AiAgent() {
     await loadRazorpay();
 
     if (!window.Razorpay) {
-      window.open(`/checkout/payment?orderId=${encodeURIComponent(orderId)}`, "_self");
+      window.open(
+        `/checkout/payment?orderId=${encodeURIComponent(orderId)}`,
+        "_self",
+      );
       return;
     }
 
@@ -395,23 +395,18 @@ export function Fresh15AiAgent() {
       description: "Fresh15 grocery order",
       handler: async (response: Record<string, string>) => {
         try {
-          await paymentApi.verify(
-            token,
-            {
-              orderId,
-              razorpay_order_id:
-                response.razorpay_order_id,
-              razorpay_payment_id:
-                response.razorpay_payment_id,
-              razorpay_signature:
-                response.razorpay_signature,
-            },
-          );
+          await paymentApi.verify(token, {
+            orderId,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_signature: response.razorpay_signature,
+          });
 
           await agent.sendMessage(
             token,
             `Payment completed for order ${orderId}`,
           );
+
           toast.success("Payment completed");
         } catch (error) {
           toast.error(
@@ -474,9 +469,9 @@ export function Fresh15AiAgent() {
         });
       }
     } catch {
-      // Store exposes the error and the toast keeps the UI concise.
       toast.error(
-        agent.error || "Fresh15 Agent is unavailable.",
+        agent.error ||
+          "Fresh15 Agent is unavailable.",
       );
     }
   };
@@ -506,7 +501,8 @@ export function Fresh15AiAgent() {
       }
     } catch {
       toast.error(
-        agent.error || "The requested action failed.",
+        agent.error ||
+          "The requested action failed.",
       );
     }
   };
@@ -620,15 +616,14 @@ export function Fresh15AiAgent() {
                 rows={1}
                 maxLength={1200}
                 disabled={agent.loading}
-                placeholder="Try: order 2 oranges"
+                placeholder="Try: show me oranges"
                 className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
 
               <button
                 type="submit"
                 disabled={
-                  !input.trim() ||
-                  agent.loading
+                  !input.trim() || agent.loading
                 }
                 aria-label="Send agent request"
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-50"
