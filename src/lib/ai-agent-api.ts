@@ -8,6 +8,7 @@ export type AgentMessage = {
 export type AgentProduct = {
   id: string;
   name: string;
+  slug?: string;
   image?: string | null;
   price: number;
   mrp: number;
