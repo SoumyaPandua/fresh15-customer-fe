@@ -1,330 +1,547 @@
- "use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Bot,
   Check,
+  ChevronRight,
   Loader2,
-  Send,
-  ShieldCheck,
+  MapPin,
+  ShoppingCart,
   Sparkles,
-  WandSparkles,
+  Store,
   X,
   XCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/store/auth";
-import {
-  confirmAiAgent,
-  declineAiAgent,
-  sendAiAgent,
-  type AgentConfirmation,
-} from "@/lib/ai-agent-api";
+import { useAiAgent } from "@/lib/store/ai-agent";
+import { paymentApi } from "@/lib/order-api";
+import type { AgentProduct, AgentWidget } from "@/lib/ai-agent-api";
 import { toast } from "sonner";
 
-type AgentMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+    };
+  }
 }
 
-function summaryText(confirmation: AgentConfirmation): string[] {
-  const summary = confirmation.summary;
+function ProductList({
+  widget,
+  onSelect,
+}: {
+  widget: Extract<AgentWidget, { type: "PRODUCT_LIST" }>;
+  onSelect: (productId: string) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      {widget.payload.products.map((product) => (
+        <button
+          key={product.id}
+          type="button"
+          onClick={() => onSelect(product.id)}
+          className="flex w-full items-center gap-3 rounded-2xl border bg-background p-3 text-left transition hover:border-primary"
+        >
+          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted">
+            {product.image ? (
+              <img
+                src={product.image}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+            )}
+          </div>
 
-  if (!isRecord(summary)) return [];
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-bold">
+              {product.name}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              ₹{product.price} / {product.unit || "unit"}
+            </div>
+          </div>
 
-  const lines: string[] = [];
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+      ))}
+    </div>
+  );
+}
 
-  if (confirmation.action === "place_order") {
-    const cart = isRecord(summary.cart) ? summary.cart : null;
-    const address = isRecord(summary.address) ? summary.address : null;
-    const slot = isRecord(summary.deliverySlot)
-      ? summary.deliverySlot
-      : null;
+function UnitPicker({
+  widget,
+  onSelect,
+}: {
+  widget: Extract<AgentWidget, { type: "UNIT_PICKER" }>;
+  onSelect: (unit: string) => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {widget.payload.options.map((unit) => (
+        <button
+          key={unit}
+          type="button"
+          onClick={() => onSelect(unit)}
+          className="rounded-xl border px-3 py-2 text-xs font-bold hover:border-primary hover:bg-primary/5"
+        >
+          {widget.payload.quantity ?? 1} {unit.toLowerCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-    if (cart && typeof cart.subtotal === "number") {
-      lines.push(`Cart subtotal: ₹${cart.subtotal.toFixed(2)}`);
-    }
+function AddressPicker({
+  widget,
+  onSelect,
+}: {
+  widget: Extract<AgentWidget, { type: "ADDRESS_PICKER" }>;
+  onSelect: (addressId: string) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      {widget.payload.addresses.map((address) => (
+        <button
+          key={address.id}
+          type="button"
+          onClick={() => onSelect(address.id)}
+          className="w-full rounded-2xl border bg-background p-3 text-left hover:border-primary"
+        >
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <MapPin className="h-4 w-4 text-primary" />
+            {address.label}
+            {address.isDefault ? (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px]">
+                Default
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {address.addressLine1}, {address.city} {address.pincode}
+          </div>
+        </button>
+      ))}
 
-    if (cart && typeof cart.totalQuantity === "number") {
-      lines.push(`Items: ${cart.totalQuantity}`);
-    }
+      {widget.payload.addAddress ? (
+        <a
+          href="/addresses/new"
+          className="flex items-center justify-center rounded-xl border border-dashed px-3 py-2.5 text-xs font-bold hover:border-primary hover:text-primary"
+        >
+          + Add address
+        </a>
+      ) : null}
+    </div>
+  );
+}
 
-    if (address) {
-      const addressLine = [
-        address.addressLine1,
-        address.city,
-        address.state,
-        address.pincode,
-      ]
-        .filter((value) => typeof value === "string" && value)
-        .join(", ");
+function SlotPicker({
+  widget,
+  onSelect,
+}: {
+  widget: Extract<AgentWidget, { type: "SLOT_PICKER" }>;
+  onSelect: (slotId: string, dateKey: string) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      {widget.payload.slots.map((slot) => (
+        <button
+          key={`${slot.id}-${slot.dateKey}`}
+          type="button"
+          onClick={() => onSelect(slot.id, slot.dateKey)}
+          className="flex w-full items-center justify-between rounded-2xl border p-3 text-left hover:border-primary"
+        >
+          <span className="text-sm font-bold">{slot.label}</span>
+          <span className="text-xs text-muted-foreground">
+            {slot.etaMinutes ? `${slot.etaMinutes} min` : slot.dateKey}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
-      if (addressLine) {
-        lines.push(`Deliver to: ${addressLine}`);
-      }
-    }
+function PaymentPicker({
+  widget,
+  onSelect,
+}: {
+  widget: Extract<AgentWidget, { type: "PAYMENT_PICKER" }>;
+  onSelect: (method: "COD" | "ONLINE") => void;
+}) {
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-2">
+      {widget.payload.methods.map((method) => (
+        <button
+          key={method}
+          type="button"
+          onClick={() => onSelect(method)}
+          className="rounded-xl border px-3 py-3 text-xs font-bold hover:border-primary hover:bg-primary/5"
+        >
+          {method === "ONLINE" ? "Razorpay" : "Cash on Delivery"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-    if (slot) {
-      const label =
-        typeof slot.label === "string"
-          ? slot.label
-          : "Selected delivery slot";
-      const dateKey =
-        typeof slot.dateKey === "string"
-          ? ` on ${slot.dateKey}`
-          : "";
-      lines.push(`Slot: ${label}${dateKey}`);
-    }
+function WidgetRenderer({
+  widget,
+  onAction,
+}: {
+  widget: AgentWidget | null;
+  onAction: (action: unknown) => void;
+}) {
+  if (!widget) return null;
 
-    if (typeof summary.paymentMethod === "string") {
-      lines.push(`Payment: ${summary.paymentMethod}`);
-    }
+  switch (widget.type) {
+    case "PRODUCT_LIST":
+      return (
+        <ProductList
+          widget={widget}
+          onSelect={(productId) =>
+            onAction({
+              type: "PRODUCT_SELECTED",
+              payload: { productId },
+            })
+          }
+        />
+      );
 
-    if (typeof summary.couponCode === "string" && summary.couponCode) {
-      lines.push(`Coupon: ${summary.couponCode}`);
-    }
+    case "UNIT_PICKER":
+      return (
+        <UnitPicker
+          widget={widget}
+          onSelect={(unit) =>
+            onAction({
+              type: "UNIT_SELECTED",
+              payload: { unit },
+            })
+          }
+        />
+      );
 
-    if (
-      typeof summary.loyaltyPoints === "number" &&
-      summary.loyaltyPoints > 0
-    ) {
-      lines.push(
-        `FreshPoints to redeem: ${summary.loyaltyPoints}`,
+    case "ADDRESS_PICKER":
+      return (
+        <AddressPicker
+          widget={widget}
+          onSelect={(addressId) =>
+            onAction({
+              type: "ADDRESS_SELECTED",
+              payload: { addressId },
+            })
+          }
+        />
+      );
+
+    case "SLOT_PICKER":
+      return (
+        <SlotPicker
+          widget={widget}
+          onSelect={(slotId, dateKey) =>
+            onAction({
+              type: "SLOT_SELECTED",
+              payload: { slotId, dateKey },
+            })
+          }
+        />
+      );
+
+    case "PAYMENT_PICKER":
+      return (
+        <PaymentPicker
+          widget={widget}
+          onSelect={(method) =>
+            onAction({
+              type: "PAYMENT_SELECTED",
+              payload: { method },
+            })
+          }
+        />
+      );
+
+    case "ORDER_SUMMARY": {
+      const payload = widget.payload;
+      const items = Array.isArray(payload.items)
+        ? (payload.items as Array<Record<string, unknown>>)
+        : [];
+
+      return (
+        <div className="mt-3 rounded-2xl border bg-card p-3 text-xs">
+          <div className="font-bold">Order summary</div>
+
+          <div className="mt-2 space-y-1.5">
+            {items.map((item, index) => (
+              <div
+                key={`${String(item.productId)}-${index}`}
+                className="flex justify-between gap-3"
+              >
+                <span>
+                  {String(item.name)} × {String(item.quantity)}
+                </span>
+                <span className="font-semibold">
+                  ₹{Number(item.subtotal || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-2 flex justify-between border-t pt-2 font-bold">
+            <span>Total before final fees</span>
+            <span>₹{Number(payload.subtotal || 0).toFixed(2)}</span>
+          </div>
+
+          <div className="mt-1 text-muted-foreground">
+            Payment: {String(payload.paymentMethod || "") === "ONLINE" ? "Razorpay" : "Cash on Delivery"}
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              onAction({
+                type: "CONFIRM_ORDER",
+                payload: {},
+              })
+            }
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 font-bold text-primary-foreground"
+          >
+            <Check className="h-4 w-4" />
+            Confirm Order
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onAction({
+                type: "CANCEL_WORKFLOW",
+                payload: {},
+              })
+            }
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 font-bold"
+          >
+            <XCircle className="h-4 w-4" />
+            Cancel
+          </button>
+        </div>
       );
     }
 
-    return lines;
-  }
+    case "ORDER_SUCCESS":
+      return (
+        <div className="mt-3 rounded-2xl border bg-primary/5 p-3">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <Check className="h-4 w-4 text-primary" />
+            Order placed successfully
+          </div>
+          <div className="mt-1 text-xs">
+            Order #{widget.payload.orderNumber}
+          </div>
+          <a
+            href={widget.payload.trackingUrl}
+            className="mt-3 inline-flex rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"
+          >
+            Track Order
+          </a>
+        </div>
+      );
 
-  if (confirmation.action === "request_refund") {
-    if (typeof summary.orderNumber === "string") {
-      lines.push(`Order: ${summary.orderNumber}`);
-    }
-    if (typeof summary.amount === "number") {
-      lines.push(`Refund amount: ₹${summary.amount.toFixed(2)}`);
-    }
-    if (typeof summary.reason === "string" && summary.reason) {
-      lines.push(`Reason: ${summary.reason}`);
-    }
-    return lines;
-  }
+    case "PAYMENT_PENDING":
+      return (
+        <div className="mt-3 rounded-2xl border bg-primary/5 p-3 text-xs">
+          <div className="font-bold">
+            Payment required for #{widget.payload.orderNumber}
+          </div>
+        </div>
+      );
 
-  if (confirmation.action === "cancel_order") {
-    if (typeof summary.orderId === "string") {
-      lines.push(`Order: ${summary.orderId}`);
-    }
-    return lines;
+    default:
+      return null;
   }
-
-  if (confirmation.action === "change_default_address") {
-    if (typeof summary.addressLine1 === "string") {
-      lines.push(`Address: ${summary.addressLine1}`);
-    }
-    if (typeof summary.city === "string") {
-      lines.push(`City: ${summary.city}`);
-    }
-    if (typeof summary.pincode === "string") {
-      lines.push(`Pincode: ${summary.pincode}`);
-    }
-    return lines;
-  }
-
-  return lines;
 }
 
 export function Fresh15AiAgent() {
   const token = useAuth((state) => state.token);
   const queryClient = useQueryClient();
-
-  const [open, setOpen] = useState(false);
+  const agent = useAiAgent();
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [conversationId, setConversationId] =
-    useState<string>();
-  const [pendingConfirmation, setPendingConfirmation] =
-    useState<AgentConfirmation | null>(null);
-
-  const [messages, setMessages] = useState<AgentMessage[]>([
-    {
-      role: "assistant",
-      content: "Hi! I’m Fresh15 Agent. I can search Fresh15 data and perform permitted actions. High-risk actions such as placing an order, cancellation and refunds always require your confirmation.",
-    },
-  ]);
-
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages, loading, pendingConfirmation]);
+    if (!token || agent.hydrated) return;
+    void agent.hydrate(token);
+  }, [agent.hydrated, agent.hydrate, token]);
 
-  if (!token) return null;
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [agent.messages, agent.loading, agent.widget]);
 
-  const authenticatedToken = token;
+  const startRazorpay = async (orderId: string) => {
+    if (!token) return;
 
-  async function runAgent() {
-    const text = input.trim();
-    if (!text || loading || confirming) return;
+    const payload = await paymentApi.createOrder(
+      token,
+      orderId,
+    );
 
-    setInput("");
-    setMessages((current) => [
-      ...current,
-      { role: "user", content: text },
-    ]);
-    setLoading(true);
-
-    try {
-      const response = await sendAiAgent(
-        authenticatedToken,
-        text,
-        conversationId,
-      );
-
-      setConversationId(response.conversationId);
-
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content:
-            response.reply ||
-            "Done. I processed your request.",
-        },
-      ]);
-
-      setPendingConfirmation(
-        response.confirmation ?? null,
-      );
-
-      if (response.actions?.some((action) =>
-        action.success &&
-        ["add_to_cart", "remove_from_cart", "update_cart_quantity", "add_reorder_list_to_cart"].includes(action.tool)
-      )) {
-        await queryClient.invalidateQueries({
-          queryKey: ["cart", authenticatedToken],
-        });
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Fresh15 Agent is unavailable.",
-      );
-    } finally {
-      setLoading(false);
+    if (!window.Razorpay) {
+      window.open(`/checkout/payment?orderId=${encodeURIComponent(orderId)}`, "_self");
+      return;
     }
-  }
 
-  async function confirmAction() {
+    const razorpay = new window.Razorpay({
+      key: payload.key,
+      amount: payload.amount,
+      currency: payload.currency,
+      order_id: payload.orderId,
+      name: "Fresh15",
+      description: "Fresh15 grocery order",
+      handler: async (response: Record<string, string>) => {
+        try {
+          await paymentApi.verify(
+            token,
+            {
+              orderId,
+              razorpay_order_id:
+                response.razorpay_order_id,
+              razorpay_payment_id:
+                response.razorpay_payment_id,
+              razorpay_signature:
+                response.razorpay_signature,
+            },
+          );
+
+          await agent.sendMessage(
+            token,
+            `Payment completed for order ${orderId}`,
+          );
+          toast.success("Payment completed");
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Payment verification failed.",
+          );
+        }
+      },
+    });
+
+    razorpay.open();
+  };
+
+  useEffect(() => {
     if (
-      !pendingConfirmation ||
-      !conversationId ||
-      confirming
+      !token ||
+      !agent.payment?.required ||
+      !agent.payment.orderId
     ) {
       return;
     }
 
-    setConfirming(true);
+    void startRazorpay(agent.payment.orderId);
+  }, [
+    agent.payment?.orderId,
+    agent.payment?.required,
+    token,
+  ]);
+
+  if (!token) return null;
+
+  const submitMessage = async () => {
+    const text = input.trim();
+
+    if (!text || agent.loading) return;
+
+    setInput("");
 
     try {
-      const response = await confirmAiAgent(
-        authenticatedToken,
-        conversationId,
-        pendingConfirmation.confirmationId,
+      const response = await agent.sendMessage(
+        token,
+        text,
       );
 
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content:
-            response.reply ||
-            "The confirmed action has been completed.",
-        },
-      ]);
-
-      setPendingConfirmation(null);
-      toast.success("Fresh15 action completed");
-    } catch (error) {
+      if (
+        response.actions?.some(
+          (action) =>
+            action.success &&
+            [
+              "add_to_cart",
+              "remove_from_cart",
+              "update_cart_quantity",
+              "add_reorder_list_to_cart",
+            ].includes(action.tool),
+        )
+      ) {
+        await queryClient.invalidateQueries({
+          queryKey: ["cart", token],
+        });
+      }
+    } catch {
+      // Store exposes the error and the toast keeps the UI concise.
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "The action could not be confirmed.",
+        agent.error || "Fresh15 Agent is unavailable.",
       );
-    } finally {
-      setConfirming(false);
     }
-  }
+  };
 
-  async function cancelConfirmation() {
-    if (!pendingConfirmation || !conversationId || confirming) {
-      return;
-    }
-
-    setConfirming(true);
-
+  const submitAction = async (action: unknown) => {
     try {
-      await declineAiAgent(
-        authenticatedToken,
-        conversationId,
-        pendingConfirmation.confirmationId,
+      const response = await agent.sendAction(
+        token,
+        action,
       );
 
-      setPendingConfirmation(null);
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: "Okay. I cancelled that action and nothing was changed.",
-        },
-      ]);
-    } catch (error) {
+      if (
+        response.actions?.some(
+          (entry) =>
+            entry.success &&
+            [
+              "add_to_cart",
+              "remove_from_cart",
+              "update_cart_quantity",
+              "add_reorder_list_to_cart",
+            ].includes(entry.tool),
+        )
+      ) {
+        await queryClient.invalidateQueries({
+          queryKey: ["cart", token],
+        });
+      }
+    } catch {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "The confirmation could not be cancelled.",
+        agent.error || "The requested action failed.",
       );
-    } finally {
-      setConfirming(false);
     }
-  }
+  };
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Open Fresh15 AI Agent"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-[71] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold text-foreground shadow-lg transition hover:-translate-y-0.5 hover:border-primary hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/30"
-      >
-        <WandSparkles className="h-4 w-4 text-primary" />
-        Fresh15 Agent
-      </button>
+      {!agent.open ? (
+        <button
+          type="button"
+          aria-label="Open Fresh15 AI Agent"
+          onClick={agent.openAgent}
+          className="fixed bottom-5 right-5 z-[71] flex items-center gap-2 rounded-full border border-primary/30 bg-background px-4 py-2.5 text-xs font-bold shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+        >
+          <Sparkles className="h-4 w-4 text-primary" />
+          Fresh15 Agent
+        </button>
+      ) : null}
 
-      {open && (
+      {agent.open ? (
         <section
           aria-label="Fresh15 AI Agent"
-          className="fixed bottom-20 right-5 z-[71] flex h-[min(680px,78dvh)] max-h-[78dvh] w-[min(420px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
-          onWheel={(event) => event.stopPropagation()}
-          onTouchMove={(event) => event.stopPropagation()}
+          className="fixed bottom-20 right-5 z-[71] flex h-[min(720px,80dvh)] max-h-[80dvh] w-[min(430px,calc(100vw-32px))] flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl"
         >
           <header className="flex shrink-0 items-center justify-between border-b bg-card px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary">
-                <WandSparkles className="h-5 w-5" />
+                <Sparkles className="h-5 w-5" />
               </span>
-
               <div>
                 <div className="font-black">Fresh15 Agent</div>
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Action-based assistant
+                <div className="text-[11px] text-muted-foreground">
+                  Shopping, cart and checkout assistant
                 </div>
               </div>
             </div>
@@ -332,20 +549,16 @@ export function Fresh15AiAgent() {
             <button
               type="button"
               aria-label="Close Fresh15 Agent"
-              onClick={() => setOpen(false)}
+              onClick={agent.closeAgent}
               className="rounded-full p-2 hover:bg-muted"
             >
               <X className="h-5 w-5" />
             </button>
           </header>
 
-          <div
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3"
-            onWheel={(event) => event.stopPropagation()}
-            onTouchMove={(event) => event.stopPropagation()}
-          >
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             <div className="space-y-3">
-              {messages.map((message, index) => (
+              {agent.messages.map((message, index) => (
                 <div
                   key={`${index}-${message.role}`}
                   className={`flex ${
@@ -366,65 +579,18 @@ export function Fresh15AiAgent() {
                 </div>
               ))}
 
-              {pendingConfirmation && (
-                <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                    Confirmation required
-                  </div>
+              <WidgetRenderer
+                widget={agent.widget}
+                onAction={submitAction}
+              />
 
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Review this action before Fresh15 executes it.
-                  </p>
-
-                  <div className="mt-3 space-y-1.5 text-xs">
-                    {summaryText(pendingConfirmation).map(
-                      (line) => (
-                        <div
-                          key={line}
-                          className="rounded-lg bg-background px-2.5 py-2"
-                        >
-                          {line}
-                        </div>
-                      ),
-                    )}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={confirming}
-                      onClick={() => void confirmAction()}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                    >
-                      {confirming ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                      Confirm
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={confirming}
-                      onClick={() => void cancelConfirmation()}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold disabled:opacity-50"
-                    >
-                      <XCircle className="h-3.5 w-3.5" />
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {loading && (
+              {agent.loading ? (
                 <div className="flex justify-start">
                   <div className="rounded-2xl bg-muted px-3 py-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <div ref={endRef} />
             </div>
@@ -433,7 +599,7 @@ export function Fresh15AiAgent() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void runAgent();
+              void submitMessage();
             }}
             className="shrink-0 border-t bg-card p-3"
           >
@@ -451,37 +617,36 @@ export function Fresh15AiAgent() {
                     !event.shiftKey
                   ) {
                     event.preventDefault();
-                    void runAgent();
+                    void submitMessage();
                   }
                 }}
                 rows={1}
                 maxLength={1200}
-                disabled={loading || confirming}
-                placeholder="Try: Add 2 milk to my cart"
+                disabled={agent.loading}
+                placeholder="Try: order 2 oranges"
                 className="max-h-28 min-h-10 flex-1 resize-none rounded-2xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
               />
 
               <button
                 type="submit"
-                disabled={!input.trim() || loading || confirming}
+                disabled={
+                  !input.trim() ||
+                  agent.loading
+                }
                 aria-label="Send agent request"
                 className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-50"
               >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
 
             <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
-              <Sparkles className="h-3 w-3" />
-              High-risk actions always require explicit confirmation.
+              <Store className="h-3 w-3" />
+              Fresh15 controls prices, stock, delivery and payments.
             </div>
           </form>
         </section>
-      )}
+      ) : null}
     </>
   );
 }
