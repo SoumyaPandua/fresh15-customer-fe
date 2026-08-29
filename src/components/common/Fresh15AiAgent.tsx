@@ -32,7 +32,7 @@ function ProductList({
           key={product.id}
           href={
             product.url ||
-            `/products/${encodeURIComponent(product.slug || product.id)}`
+            `/product/${encodeURIComponent(product.slug || product.id)}`
           }
           className="flex w-full items-center gap-3 rounded-2xl border bg-background p-3 text-left transition hover:border-primary"
         >
