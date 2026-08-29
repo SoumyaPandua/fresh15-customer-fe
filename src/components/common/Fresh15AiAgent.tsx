@@ -19,13 +19,8 @@ import { paymentApi } from "@/lib/order-api";
 import type { AgentProduct, AgentWidget } from "@/lib/ai-agent-api";
 import { toast } from "sonner";
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => {
-      open: () => void;
-    };
-  }
-}
+import { loadRazorpay } from "@/lib/razorpay";
+
 
 function ProductList({
   widget,
@@ -383,6 +378,8 @@ export function Fresh15AiAgent() {
       token,
       orderId,
     );
+
+    await loadRazorpay();
 
     if (!window.Razorpay) {
       window.open(`/checkout/payment?orderId=${encodeURIComponent(orderId)}`, "_self");
