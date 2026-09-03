@@ -3,6 +3,7 @@ import { authedRequest, CartApiError } from "./cart-api";
 import type { Address, Order, OrderItem, OrderStatus } from "./types";
 import { isSubstitutionPreference, normalizeSubstitution, type SubstitutionPreference } from "./substitution";
 import { mapCart } from "@/lib/cart-api";
+import { API_BASE_URL } from "./config";
 
 const toSubstitutionPreference = (v: unknown): SubstitutionPreference | undefined =>
   isSubstitutionPreference(
@@ -34,18 +35,7 @@ export type ApiOrderItem = {
   image?: string;
   unit?: string;
   subtotal?: number;
-  /** Backend returns an object: { type, preferredReplacementProductId, preferredReplacementProductName, ... }. */
-  substitutionPreference?:
-    | {
-        type?: string | null;
-        preferredReplacementProductId?: string | Record<string, any> | null;
-        preferredReplacementProductName?: string | null;
-        preferredReplacementSku?: string | null;
-        preferredReplacementImage?: string | null;
-      }
-    | string
-    | null;
-  /** Legacy/top-level shape supported for compatibility. */
+  substitutionPreference?: { type?: string | null; preferredReplacementProductId?: string | Record<string, any> | null } | string | null;
   preferredReplacementProductId?: string | Record<string, any> | null;
   preferredReplacementName?: string | null;
 };
@@ -93,64 +83,42 @@ export function mapOrderStatus(raw?: string | null): OrderStatus {
 }
 
 const EMPTY_ADDRESS: Address = {
-  id: "",
-  label: "Other",
-  name: "",
-  line1: "",
-  city: "",
-  state: "",
-  pincode: "",
-  phone: "",
+  id: "", label: "Other", name: "", line1: "", city: "", state: "", pincode: "", phone: "",
 };
 
 function mapOrderAddress(raw: ApiOrder["addressId"]): Address {
   if (!raw || typeof raw === "string") return EMPTY_ADDRESS;
-  const type = String(raw["addressType"] ?? "OTHER").toUpperCase();
-  const label: Address["label"] = type === "HOME" ? "Home" : type === "WORK" ? "Work" : "Other";
+  const type = String(raw.addressType ?? "OTHER").toUpperCase();
   return {
-    id: String(raw["_id"] ?? ""),
-    label,
-    name: String(raw["fullName"] ?? ""),
-    line1: String(raw["addressLine1"] ?? ""),
-    line2: raw["addressLine2"] ? String(raw["addressLine2"]) : undefined,
-    city: String(raw["city"] ?? ""),
-    state: String(raw["state"] ?? ""),
-    pincode: String(raw["pincode"] ?? ""),
-    phone: String(raw["phone"] ?? ""),
+    id: String(raw._id ?? ""),
+    label: type === "HOME" ? "Home" : type === "WORK" ? "Work" : "Other",
+    name: String(raw.fullName ?? ""),
+    line1: String(raw.addressLine1 ?? ""),
+    line2: raw.addressLine2 ? String(raw.addressLine2) : undefined,
+    city: String(raw.city ?? ""),
+    state: String(raw.state ?? ""),
+    pincode: String(raw.pincode ?? ""),
+    phone: String(raw.phone ?? ""),
   };
 }
 
 function mapOrderItem(it: ApiOrderItem): OrderItem {
-  const productId =
-    typeof it.productId === "string" ? it.productId : String(it.productId?.["_id"] ?? it.productName ?? "");
+  const productId = typeof it.productId === "string" ? it.productId : String(it.productId?._id ?? it.productName ?? "");
   const fromProduct = typeof it.productId === "object" && it.productId ? it.productId : {};
-
-  const substitution =
-    it.substitutionPreference && typeof it.substitutionPreference === "object" ? it.substitutionPreference : null;
-
+  const substitution = it.substitutionPreference && typeof it.substitutionPreference === "object" ? it.substitutionPreference : null;
   const replacement = substitution?.preferredReplacementProductId ?? it.preferredReplacementProductId ?? null;
-
   const replacementRef = typeof replacement === "object" && replacement ? replacement : null;
-
-  const replacementId =
-    (replacementRef ? String(replacementRef["_id"] ?? "") : typeof replacement === "string" ? replacement : "") || null;
-
-  const replacementName =
-    substitution?.preferredReplacementProductName ??
-    it.preferredReplacementName ??
-    (replacementRef?.["name"] as string | undefined) ??
-    undefined;
-
+  const replacementId = (replacementRef ? String(replacementRef._id ?? "") : typeof replacement === "string" ? replacement : "") || null;
+  const replacementName = substitution?.preferredReplacementProductName ?? it.preferredReplacementName ?? replacementRef?.name ?? undefined;
   return {
     productId,
-    name: String(it.productName ?? fromProduct["name"] ?? "Item"),
+    name: String(it.productName ?? fromProduct.name ?? "Item"),
     emoji: "🛍️",
     gradient: "fresh",
     qty: Number(it.quantity) || 1,
     price: Number(it.price) || 0,
-    unit: String(it.unit ?? fromProduct["unit"] ?? ""),
-    image:
-      it.image ?? substitution?.preferredReplacementImage ?? (fromProduct["image"] as string | undefined) ?? undefined,
+    unit: String(it.unit ?? fromProduct.unit ?? ""),
+    image: it.image ?? substitution?.preferredReplacementImage ?? fromProduct.image ?? undefined,
     substitutionPreference: toSubstitutionPreference(it.substitutionPreference),
     preferredReplacementProductId: replacementId,
     preferredReplacementName: replacementName,
@@ -166,8 +134,7 @@ export function mapOrder(raw: ApiOrder): Order {
     orderNumber: raw.orderNumber ? String(raw.orderNumber) : String(raw._id),
     createdAt: raw.createdAt ?? new Date().toISOString(),
     status: mapOrderStatus(raw.status ?? raw.orderStatus),
-    items,
-    subtotal,
+    items, subtotal,
     discount: Number(raw.couponDiscount) || 0,
     couponCode: raw.couponCode ? String(raw.couponCode) : undefined,
     deliveryFee: Number(raw.deliveryCharge) || 0,
@@ -191,44 +158,19 @@ export type CreateOrderInput = {
   loyaltyPoints?: number;
 };
 
-export type ReorderItem = {
-  productId: string;
-  name: string;
-  image?: string | null;
-  sku?: string;
-  unit?: string;
-  mrp: number;
-  price: number;
-  availableStock: number;
-  isAvailable: boolean;
-  orderCount: number;
-  totalQuantity: number;
-  averageQuantity: number;
-  lastQuantity: number;
-  lastOrderedAt: string;
-  daysSinceLastOrder: number | null;
-  usuallyBoughtThisWeek: boolean;
-  matchingWeekdayCount: number;
-  reason: string;
+const CHECKOUT_IDEMPOTENCY_KEY = "fresh15:checkout:idempotency";
+
+const getCheckoutIdempotencyKey = () => {
+  if (typeof window === "undefined") return null;
+  const existing = window.sessionStorage.getItem(CHECKOUT_IDEMPOTENCY_KEY);
+  if (existing) return existing;
+  const key = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.sessionStorage.setItem(CHECKOUT_IDEMPOTENCY_KEY, key);
+  return key;
 };
 
-export type ReorderListResponse = {
-  historyDays: number;
-  items: ReorderItem[];
-  usuallyBoughtThisWeek: ReorderItem[];
-};
-
-export type ReorderRequest = {
-  mode: "ALL" | "SELECTED";
-  sourceOrderId?: string;
-  items?: Array<{ productId: string; quantity: number }>;
-};
-
-export type ReorderResponse = {
-  added: Array<{ productId: string; name?: string; quantity: number }>;
-  skipped: Array<{ productId: string; name?: string; reason: string }>;
-  cart: import("./cart-api").CartSnapshot;
-  summary: { addedCount: number; skippedCount: number };
+const clearCheckoutIdempotencyKey = () => {
+  if (typeof window !== "undefined") window.sessionStorage.removeItem(CHECKOUT_IDEMPOTENCY_KEY);
 };
 
 export type RazorpayOrderPayload = {
@@ -241,101 +183,64 @@ export type RazorpayOrderPayload = {
 
 export const orderApi = {
   async applyCoupon(token: string | null, code: string, orderAmount: number) {
-    const res = await authedRequest<AppliedCoupon>(
-      "/api/coupon/apply",
-      { method: "POST", body: JSON.stringify({ code, orderAmount }) },
-      token,
-    );
+    const res = await authedRequest<AppliedCoupon>("/api/coupon/apply", { method: "POST", body: JSON.stringify({ code, orderAmount }) }, token);
     return { coupon: res.data, message: res.message };
   },
+
   async create(token: string | null, input: CreateOrderInput) {
-    const res = await authedRequest<ApiOrder>(
-      "/api/order",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          addressId: input.addressId,
-          paymentMethod: input.paymentMethod,
-          couponCode: input.couponCode ?? "",
-          notes: input.notes ?? "",
-          deliverySlotId: input.deliverySlotId,
-          deliveryDateKey: input.deliveryDateKey,
-          loyaltyPoints: input.loyaltyPoints ?? 0,
-        }),
-      },
-      token,
-    );
-    return { order: mapOrder(res.data), raw: res.data, message: res.message };
+    const idempotencyKey = getCheckoutIdempotencyKey();
+    try {
+      const res = await authedRequest<ApiOrder>(
+        "/api/order",
+        {
+          method: "POST",
+          headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+          body: JSON.stringify({
+            addressId: input.addressId,
+            paymentMethod: input.paymentMethod,
+            couponCode: input.couponCode ?? "",
+            notes: input.notes ?? "",
+            deliverySlotId: input.deliverySlotId,
+            deliveryDateKey: input.deliveryDateKey,
+            loyaltyPoints: input.loyaltyPoints ?? 0,
+          }),
+        },
+        token,
+      );
+      clearCheckoutIdempotencyKey();
+      return { order: mapOrder(res.data), raw: res.data, message: res.message };
+    } catch (error) {
+      throw error;
+    }
   },
+
   async list(token: string | null) {
     const res = await authedRequest<ApiOrder[] | { orders?: ApiOrder[] }>("/api/order", { method: "GET" }, token);
     const arr = Array.isArray(res.data) ? res.data : (res.data?.orders ?? []);
     return arr.map(mapOrder);
   },
+
   async get(token: string | null, id: string) {
     const res = await authedRequest<ApiOrder>(`/api/order/${id}`, { method: "GET" }, token);
     return mapOrder(res.data);
-  },
-  async reorderList(token: string | null) {
-    const res = await authedRequest<ReorderListResponse>(
-      "/api/order/reorder-list?days=90&limit=40",
-      { method: "GET" },
-      token,
-    );
-    return res.data;
-  },
-  async reorderToCart(token: string | null, input: ReorderRequest) {
-    const res = await authedRequest<ReorderResponse>(
-      "/api/order/reorder",
-      { method: "POST", body: JSON.stringify(input) },
-      token,
-    );
-    return {
-      ...res.data,
-      cart: mapCart(res.data.cart),
-    };
   },
 };
 
 export const paymentApi = {
   async createOrder(token: string | null, orderId: string) {
-    const res = await authedRequest<RazorpayOrderPayload>(
-      "/api/payment/create-order",
-      { method: "POST", body: JSON.stringify({ orderId }) },
-      token,
-    );
+    const res = await authedRequest<RazorpayOrderPayload>("/api/payment/create-order", { method: "POST", body: JSON.stringify({ orderId }) }, token);
     return res.data;
   },
-  async verify(
-    token: string | null,
-    payload: {
-      orderId: string;
-      razorpay_order_id: string;
-      razorpay_payment_id: string;
-      razorpay_signature: string;
-    },
-  ) {
-    const res = await authedRequest<ApiOrder | null>(
-      "/api/payment/verify",
-      { method: "POST", body: JSON.stringify(payload) },
-      token,
-    );
+  async verify(token: string | null, payload: { orderId: string; razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) {
+    const res = await authedRequest<ApiOrder | null>("/api/payment/verify", { method: "POST", body: JSON.stringify(payload) }, token);
     return res.message;
   },
   async reconcile(token: string | null, orderId: string) {
-    const res = await authedRequest<ApiOrder>(
-      "/api/payment/reconcile",
-      { method: "POST", body: JSON.stringify({ orderId }) },
-      token,
-    );
+    const res = await authedRequest<ApiOrder>("/api/payment/reconcile", { method: "POST", body: JSON.stringify({ orderId }) }, token);
     return { order: mapOrder(res.data), message: res.message };
   },
   async failure(token: string | null, payload: Record<string, unknown>) {
-    const res = await authedRequest<null>(
-      "/api/payment/failure",
-      { method: "POST", body: JSON.stringify(payload) },
-      token,
-    );
+    const res = await authedRequest<null>("/api/payment/failure", { method: "POST", body: JSON.stringify(payload) }, token);
     return res.message;
   },
 };
