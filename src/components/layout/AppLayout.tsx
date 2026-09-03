@@ -1,5 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
-import { useRouterState } from "@/lib/next-router-compat";
+import { usePathname } from "next/navigation";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 import { Fresh15AiAssistant } from "../common/Fresh15AiAssistant";
@@ -8,7 +10,7 @@ import { PersonalizedPicks, SmartBasket } from "../common/PersonalizedProductRai
 import { PersonalizedOffers } from "../common/PersonalizedOffers";
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const pathname = useRouterState((state) => state.location.pathname);
+  const pathname = usePathname();
   const isHome = pathname === "/";
 
   return (
