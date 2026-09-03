@@ -146,7 +146,7 @@ export function PersonalizedPicks({
       title="Picks for you"
       subtitle="Relevant products from your Fresh15 activity"
       products={products}
-      requestId={query.data.requestId}
+      requestId={query.data?.requestId ?? ""}
       type="PERSONALIZED"
       icon="heart"
     />
@@ -191,7 +191,7 @@ export function SmartBasket({
       title="Fresh15 Smart Basket"
       subtitle="Based on your routine, replenishment timing and seasonal availability"
       products={products}
-      requestId={query.data.requestId}
+      requestId={query.data?.requestId ?? ""}
       type="SMART_BASKET"
       icon="basket"
     />
