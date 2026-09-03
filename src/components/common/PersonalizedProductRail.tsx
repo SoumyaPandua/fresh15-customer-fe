@@ -4,7 +4,11 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Heart, ShoppingBasket, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/store/auth";
-import { recommendationApi, trackRecommendationEvent, type RecommendationProduct } from "@/lib/recommendation-api";
+import {
+  recommendationApi,
+  trackRecommendationEvent,
+  type RecommendationProduct,
+} from "@/lib/recommendation-api";
 import { ProductCard } from "./ProductCard";
 import { ProductGridSkeleton } from "./Skeletons";
 import { SectionHeader } from "./SectionHeader";
@@ -12,20 +16,21 @@ import { SectionHeader } from "./SectionHeader";
 const toCardProduct = (product: RecommendationProduct) => ({
   id: product.id,
   name: product.name,
-  slug: product.slug,
+  categoryId: "",
+  categoryName: "",
+  emoji: "🛒",
+  gradient: "fresh" as const,
   price: product.price,
   mrp: product.mrp,
   unit: product.unit,
-  image: product.image || undefined,
+  stock: product.availableStock,
   rating: product.rating,
   reviews: 0,
+  etaMinutes: 15,
   description: "",
-  categoryId: "",
-  categoryName: "",
-  tags: [],
-  isFeatured: false,
+  image: product.image || undefined,
   isActive: true,
-  stock: product.availableStock,
+  tags: [],
 });
 
 function Rail({
@@ -47,6 +52,7 @@ function Rail({
 
   useEffect(() => {
     if (!token || !products.length) return;
+
     const events = products.slice(0, 10).map((product, index) => ({
       eventType: "IMPRESSION" as const,
       surface: "HOME" as const,
@@ -55,30 +61,45 @@ function Rail({
       recommendationRequestId: requestId,
       position: index,
     }));
+
     void recommendationApi.recordEvents(token, events);
   }, [token, requestId, products, type]);
+
+  if (!token || !products.length) return null;
 
   return (
     <section className="mb-8">
       <SectionHeader
-        title={<span className="inline-flex items-center gap-2">
-          {icon === "heart" ? <Heart className="h-5 w-5 text-primary" /> : <ShoppingBasket className="h-5 w-5 text-primary" />}
-          {title}
-          <Sparkles className="h-4 w-4 text-warning" />
-        </span>}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {icon === "heart" ? (
+              <Heart className="h-5 w-5 text-primary" />
+            ) : (
+              <ShoppingBasket className="h-5 w-5 text-primary" />
+            )}
+            {title}
+            <Sparkles className="h-4 w-4 text-warning" />
+          </span>
+        }
         subtitle={subtitle}
         href={{ to: "/search" }}
       />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {products.map((product, index) => (
-          <div key={product.id} onClick={() => trackRecommendationEvent(token, {
-            eventType: "CLICK",
-            surface: "HOME",
-            recommendationType: type,
-            productId: product.id,
-            recommendationRequestId: requestId,
-            position: index,
-          })}>
+          <div
+            key={product.id}
+            onClick={() =>
+              trackRecommendationEvent(token, {
+                eventType: "CLICK",
+                surface: "HOME",
+                recommendationType: type,
+                productId: product.id,
+                recommendationRequestId: requestId,
+                position: index,
+              })
+            }
+          >
             <ProductCard product={toCardProduct(product)} />
           </div>
         ))}
@@ -87,8 +108,13 @@ function Rail({
   );
 }
 
-export function PersonalizedPicks({ limit = 8 }: { limit?: number }) {
+export function PersonalizedPicks({
+  limit = 8,
+}: {
+  limit?: number;
+}) {
   const token = useAuth((state) => state.token);
+
   const query = useQuery({
     queryKey: ["personalized-picks", token, limit],
     enabled: Boolean(token),
@@ -97,24 +123,43 @@ export function PersonalizedPicks({ limit = 8 }: { limit?: number }) {
     refetchOnWindowFocus: false,
   });
 
-  if (!token || query.isLoading) {
-    if (!token) return null;
-    return <section className="mb-8"><SectionHeader title="Picks for you" subtitle="Fresh15 learns your shopping routine" /><ProductGridSkeleton count={5} /></section>;
-  }
-  if (query.isError || !query.data?.items.length) return null;
+  if (!token) return null;
 
-  return <Rail
-    title="Picks for you"
-    subtitle="Relevant products from your Fresh15 activity"
-    products={query.data.items}
-    requestId={query.data.requestId}
-    type="PERSONALIZED"
-    icon="heart"
-  />;
+  const products = query.data?.items ?? [];
+
+  if (query.isLoading) {
+    return (
+      <section className="mb-8">
+        <SectionHeader
+          title="Picks for you"
+          subtitle="Fresh15 learns your shopping routine"
+        />
+        <ProductGridSkeleton count={5} />
+      </section>
+    );
+  }
+
+  if (query.isError || !products.length) return null;
+
+  return (
+    <Rail
+      title="Picks for you"
+      subtitle="Relevant products from your Fresh15 activity"
+      products={products}
+      requestId={query.data.requestId}
+      type="PERSONALIZED"
+      icon="heart"
+    />
+  );
 }
 
-export function SmartBasket({ limit = 8 }: { limit?: number }) {
+export function SmartBasket({
+  limit = 8,
+}: {
+  limit?: number;
+}) {
   const token = useAuth((state) => state.token);
+
   const query = useQuery({
     queryKey: ["smart-basket", token, limit],
     enabled: Boolean(token),
@@ -123,18 +168,32 @@ export function SmartBasket({ limit = 8 }: { limit?: number }) {
     refetchOnWindowFocus: false,
   });
 
-  if (!token || query.isLoading) {
-    if (!token) return null;
-    return <section className="mb-8"><SectionHeader title="Fresh15 Smart Basket" subtitle="Your weekly basket, built from your routine" /><ProductGridSkeleton count={5} /></section>;
-  }
-  if (query.isError || !query.data?.items.length) return null;
+  if (!token) return null;
 
-  return <Rail
-    title="Fresh15 Smart Basket"
-    subtitle="Based on your routine, replenishment timing and seasonal availability"
-    products={query.data.items}
-    requestId={query.data.requestId}
-    type="SMART_BASKET"
-    icon="basket"
-  />;
+  const products = query.data?.items ?? [];
+
+  if (query.isLoading) {
+    return (
+      <section className="mb-8">
+        <SectionHeader
+          title="Fresh15 Smart Basket"
+          subtitle="Your weekly basket, built from your routine"
+        />
+        <ProductGridSkeleton count={5} />
+      </section>
+    );
+  }
+
+  if (query.isError || !products.length) return null;
+
+  return (
+    <Rail
+      title="Fresh15 Smart Basket"
+      subtitle="Based on your routine, replenishment timing and seasonal availability"
+      products={products}
+      requestId={query.data.requestId}
+      type="SMART_BASKET"
+      icon="basket"
+    />
+  );
 }
