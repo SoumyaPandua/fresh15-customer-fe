@@ -8,21 +8,15 @@ import type { Product } from "@/lib/types";
 import { type SubstitutionPreference } from "@/lib/substitution";
 import { useServiceability } from "@/lib/store/serviceability";
 
-export type CartLineUI = CartItem & { image?: string | undefined; stock?: number; isActive?: boolean };
+export type CartLineUI = CartItem & { image?: string; stock?: number; isActive?: boolean };
 
 const EMPTY: CartSnapshot = { lines: [], totalItems: 0, totalQuantity: 0, subtotal: 0 };
 
-/**
- * Single source of truth for the cart.
- * Authenticated customers read/write the real backend (authoritative);
- * guests keep the local persisted store. The two never merge.
- */
 export function useCartBook() {
   const token = useAuth((s) => s.token);
   const isAuthed = Boolean(token);
   const qc = useQueryClient();
-  // Subscribe to the exact slices used here (actions are stable) instead of the
-  // whole store, so unrelated store writes don't re-render every ProductCard.
+  const cartKey = ["cart", token ?? "guest"] as const;
   const local = useCart(
     useShallow((s) => ({
       items: s.items,
@@ -37,118 +31,118 @@ export function useCartBook() {
       clearCoupon: s.clearCoupon,
     })),
   );
-  const coupon = local.appliedCoupon;
   const serviceability = useServiceability();
-
   const query = useQuery({
-    queryKey: ["cart", token ?? "guest"],
+    queryKey: cartKey,
     queryFn: () => cartApi.get(token),
     enabled: isAuthed,
     staleTime: 15_000,
+    refetchOnWindowFocus: false,
   });
 
-  const cachedSnapshot = query.data;
-
-  const lines = Array.isArray(cachedSnapshot?.lines) ? cachedSnapshot.lines : [];
-
-  const snapshot: CartSnapshot = {
-    lines,
-    totalItems: Number(cachedSnapshot?.totalItems) || lines.length,
-    totalQuantity: Number(cachedSnapshot?.totalQuantity) || lines.reduce((sum, line) => sum + line.qty, 0),
-    subtotal: Number(cachedSnapshot?.subtotal) || lines.reduce((sum, line) => sum + line.subtotal, 0),
-  };
-
+  const cachedSnapshot = query.data ?? EMPTY;
+  const lines = Array.isArray(cachedSnapshot.lines) ? cachedSnapshot.lines : [];
   const items: CartLineUI[] = isAuthed
-    ? lines.map((l) => ({
-        productId: l.productId,
-        name: l.product.name,
-        emoji: l.product.emoji,
-        gradient: l.product.gradient,
-        price: l.price,
-        mrp: l.product.mrp,
-        unit: l.product.unit,
-        qty: l.qty,
-        image: l.product.image,
-        stock: l.product.stock,
-        isActive: l.product.isActive !== false,
-        substitutionPreference: l.substitutionPreference,
-        preferredReplacementProductId: l.preferredReplacementProductId,
-        preferredReplacementName: l.preferredReplacementName,
+    ? lines.map((line) => ({
+        productId: line.productId,
+        name: line.product.name,
+        emoji: line.product.emoji,
+        gradient: line.product.gradient,
+        price: line.price,
+        mrp: line.product.mrp,
+        unit: line.product.unit,
+        qty: line.qty,
+        image: line.product.image,
+        stock: line.product.stock,
+        isActive: line.product.isActive !== false,
+        substitutionPreference: line.substitutionPreference,
+        preferredReplacementProductId: line.preferredReplacementProductId,
+        preferredReplacementName: line.preferredReplacementName,
       }))
     : local.items;
 
-  const baseTotals = selectCartTotals({ items, appliedCoupon: coupon } as never);
-  const configuredFee = serviceability.baseDeliveryFee;
-  const freeAbove = serviceability.freeDeliveryAbove;
+  const baseTotals = selectCartTotals({ items, appliedCoupon: local.appliedCoupon } as never);
   const deliveryFee = serviceability.serviceable
-    ? (baseTotals.subtotal >= freeAbove ? 0 : configuredFee)
+    ? (baseTotals.subtotal >= serviceability.freeDeliveryAbove ? 0 : serviceability.baseDeliveryFee)
     : baseTotals.deliveryFee;
   const totals = {
     ...baseTotals,
     deliveryFee,
-    total: Math.max(0, baseTotals.subtotal - baseTotals.couponDiscount + deliveryFee + baseTotals.taxes),
+    total: Math.max(
+      0,
+      baseTotals.subtotal - baseTotals.couponDiscount + deliveryFee + baseTotals.taxes,
+    ),
   };
 
-  const cartKey = ["cart", token ?? "guest"] as const;
-  const setCart = (cart: CartSnapshot) => qc.setQueryData(cartKey, cart);
+  const setCart = (cart: CartSnapshot) => {
+    qc.setQueryData<CartSnapshot>(cartKey, cart ?? EMPTY);
+  };
 
   const mutation = useMutation({
-    mutationFn: async (run: () => Promise<{ cart: CartSnapshot; message?: string }>) => run(),
+    mutationFn: (run: () => Promise<{ cart: CartSnapshot; message?: string }>) => run(),
     onSuccess: (res) => {
-      // A partial/unknown response shape must never wipe the cart — refetch instead.
-      if (res.cart.lines.length === 0 && (qc.getQueryData<CartSnapshot>(cartKey)?.lines.length ?? 0) > 0) {
+      if (res?.cart && Array.isArray(res.cart.lines)) {
+        setCart(res.cart);
+      } else {
         void qc.invalidateQueries({ queryKey: cartKey });
-        return;
       }
-      setCart(res.cart);
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Could not update your cart"),
+    onError: (error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "Could not update your cart");
+    },
   });
 
   const run = async (fn: () => Promise<{ cart: CartSnapshot; message?: string }>) => {
     try {
       await mutation.mutateAsync(fn);
-    } catch {
-      /* surfaced via toast */
-    }
+    } catch {}
   };
 
-  const qtyOf = (productId: string) => items.find((i) => i.productId === productId)?.qty ?? 0;
+  const qtyOf = (productId: string) =>
+    items.find((item) => item.productId === productId)?.qty ?? 0;
 
   return {
     isAuthed,
     items,
     totals,
-    appliedCoupon: coupon,
+    appliedCoupon: local.appliedCoupon,
     applyCoupon: local.applyCoupon,
     clearCoupon: local.clearCoupon,
     isLoading: isAuthed && query.isLoading,
     error: query.error instanceof Error ? query.error.message : null,
     busy: mutation.isPending,
+    refetch: query.refetch,
     qtyOf,
     async add(product: Product) {
-      if (!isAuthed) return local.add(product);
+      if (!isAuthed) {
+        local.add(product);
+        return;
+      }
       await run(() => cartApi.add(token, product.id, 1));
     },
     async inc(productId: string) {
-      if (!isAuthed) return local.inc(productId);
+      if (!isAuthed) {
+        local.inc(productId);
+        return;
+      }
       await run(() => cartApi.setQuantity(token, productId, qtyOf(productId) + 1));
     },
     async dec(productId: string) {
-      if (!isAuthed) return local.dec(productId);
+      if (!isAuthed) {
+        local.dec(productId);
+        return;
+      }
       const next = qtyOf(productId) - 1;
       if (next <= 0) await run(() => cartApi.remove(token, productId));
       else await run(() => cartApi.setQuantity(token, productId, next));
     },
     async remove(productId: string) {
-      if (!isAuthed) return local.remove(productId);
+      if (!isAuthed) {
+        local.remove(productId);
+        return;
+      }
       await run(() => cartApi.remove(token, productId));
     },
-    /**
-     * Persist the out-of-stock substitution preference for one line.
-     * Guests use the local store; authenticated customers hit
-     * PATCH /api/cart/:productId/substitution (backend is authoritative).
-     */
     async setSubstitution(
       productId: string,
       preference: SubstitutionPreference,
@@ -166,7 +160,8 @@ export function useCartBook() {
         await mutation.mutateAsync(() =>
           cartApi.setSubstitution(token, productId, {
             preference,
-            preferredReplacementProductId: preference === "SPECIFIC_ITEM" ? (replacement?.id ?? null) : null,
+            preferredReplacementProductId:
+              preference === "SPECIFIC_ITEM" ? (replacement?.id ?? null) : null,
             quantity: qtyOf(productId) || 1,
           }),
         );
@@ -177,13 +172,26 @@ export function useCartBook() {
     },
     async clear() {
       local.clearCoupon();
-      if (!isAuthed) return local.clear();
+      if (!isAuthed) {
+        local.clear();
+        return;
+      }
       await run(() => cartApi.clear(token));
     },
   };
 }
 
-/** Lightweight count for nav badges — shares the same query cache. */
 export function useCartCount() {
-  return useCartBook().totals.count;
+  const token = useAuth((s) => s.token);
+  const localCount = useCart(
+    useShallow((s) => s.items.reduce((sum, item) => sum + item.qty, 0)),
+  );
+  const isAuthed = Boolean(token);
+  const cartKey = ["cart", token ?? "guest"] as const;
+  const qc = useQueryClient();
+
+  if (!isAuthed) return localCount;
+
+  const snapshot = qc.getQueryData<CartSnapshot>(cartKey);
+  return Number(snapshot?.totalQuantity) || 0;
 }
