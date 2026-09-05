@@ -40,11 +40,10 @@ export function DeliveryRatingPrompt() {
     return () => { cancelled = true; };
   }, [token, orderId]);
 
-  if (!token || !orderId || submitted) {
-    if (submitted && !hidden) {
-      return <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4"><div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" /> Delivery partner rating submitted</div><div className="mt-1 text-xs text-muted-foreground">Thanks! This rating is final and cannot be changed.</div></div>;
-    }
-    return null;
+  if (!token || !orderId) return null;
+
+  if (submitted) {
+    return <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4"><div className="flex items-center gap-2 text-sm font-semibold"><CheckCircle2 className="h-4 w-4 text-primary" /> Delivery partner rating submitted</div><div className="mt-1 text-xs text-muted-foreground">Thanks! This rating is final and cannot be changed.</div></div>;
   }
 
   const submit = async () => {
