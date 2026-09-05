@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Heart, ShoppingBasket, Sparkles } from "lucide-react";
+import { Heart, ShoppingBasket, Sparkles, ArrowRight } from "lucide-react";
+import { Link } from "@/lib/next-router-compat";
 import { useAuth } from "@/lib/store/auth";
 import {
   recommendationApi,
@@ -12,6 +13,7 @@ import {
 import { ProductCard } from "./ProductCard";
 import { ProductGridSkeleton } from "./Skeletons";
 import { SectionHeader } from "./SectionHeader";
+import { cn } from "@/lib/utils";
 
 const toCardProduct = (product: RecommendationProduct) => ({
   id: product.id,
@@ -53,7 +55,7 @@ function Rail({
   useEffect(() => {
     if (!token || !products.length) return;
 
-    const events = products.slice(0, 10).map((product, index) => ({
+    const events = products.slice(0, 8).map((product, index) => ({
       eventType: "IMPRESSION" as const,
       surface: "HOME" as const,
       recommendationType: type,
@@ -68,29 +70,43 @@ function Rail({
   if (!token || !products.length) return null;
 
   return (
-    <section className="mb-8">
-      <SectionHeader
-        title={
-          <span className="inline-flex items-center gap-2">
-            {icon === "heart" ? (
-              <Heart className="h-5 w-5 text-primary" />
-            ) : (
-              <ShoppingBasket className="h-5 w-5 text-primary" />
-            )}
-            {title}
-            <Sparkles className="h-4 w-4 text-warning" />
-          </span>
-        }
-        subtitle={subtitle}
-        href={{ to: "/search" }}
-      />
+    <section
+      className={cn(
+        "mb-9 overflow-hidden rounded-[1.6rem] border p-4 shadow-soft sm:p-5",
+        type === "SMART_BASKET"
+          ? "bg-gradient-to-br from-primary/10 via-card to-accent/10"
+          : "bg-gradient-to-br from-card via-card to-primary/5",
+      )}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              {icon === "heart" ? <Heart className="h-4 w-4" /> : <ShoppingBasket className="h-4 w-4" />}
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-extrabold tracking-tight sm:text-xl">{title}</h2>
+              <p className="truncate text-xs text-muted-foreground sm:text-sm">{subtitle}</p>
+            </div>
+            <Sparkles className="hidden h-4 w-4 shrink-0 text-warning sm:block animate-pulse" />
+          </div>
+        </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <Link
+          to="/search"
+          className="hidden shrink-0 items-center gap-1 rounded-full bg-background/70 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-background sm:inline-flex"
+        >
+          Explore <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 hide-scrollbar">
         {products.map((product, index) => (
           <div
             key={product.id}
+            className="w-[205px] shrink-0 snap-start sm:w-[225px] lg:w-[235px]"
             onClick={() =>
-              trackRecommendationEvent(token, {
+              void trackRecommendationEvent(token, {
                 eventType: "CLICK",
                 surface: "HOME",
                 recommendationType: type,
@@ -108,11 +124,7 @@ function Rail({
   );
 }
 
-export function PersonalizedPicks({
-  limit = 8,
-}: {
-  limit?: number;
-}) {
+export function PersonalizedPicks({ limit = 6 }: { limit?: number }) {
   const token = useAuth((state) => state.token);
 
   const query = useQuery({
@@ -125,16 +137,19 @@ export function PersonalizedPicks({
 
   if (!token) return null;
 
-  const products = query.data?.items ?? [];
+  const products = useMemo(
+    () =>
+      (query.data?.items ?? []).filter(
+        (product, index, array) => array.findIndex((item) => item.id === product.id) === index,
+      ),
+    [query.data?.items],
+  );
 
   if (query.isLoading) {
     return (
-      <section className="mb-8">
-        <SectionHeader
-          title="Picks for you"
-          subtitle="Fresh15 learns your shopping routine"
-        />
-        <ProductGridSkeleton count={5} />
+      <section className="mb-9">
+        <SectionHeader title="Picks for you" subtitle="A lighter, personalized shelf from your Fresh15 activity" />
+        <ProductGridSkeleton count={4} />
       </section>
     );
   }
@@ -144,7 +159,7 @@ export function PersonalizedPicks({
   return (
     <Rail
       title="Picks for you"
-      subtitle="Relevant products from your Fresh15 activity"
+      subtitle="Personalized products, kept easy to scan"
       products={products}
       requestId={query.data?.requestId ?? ""}
       type="PERSONALIZED"
@@ -153,11 +168,7 @@ export function PersonalizedPicks({
   );
 }
 
-export function SmartBasket({
-  limit = 8,
-}: {
-  limit?: number;
-}) {
+export function SmartBasket({ limit = 6 }: { limit?: number }) {
   const token = useAuth((state) => state.token);
 
   const query = useQuery({
@@ -170,16 +181,19 @@ export function SmartBasket({
 
   if (!token) return null;
 
-  const products = query.data?.items ?? [];
+  const products = useMemo(
+    () =>
+      (query.data?.items ?? []).filter(
+        (product, index, array) => array.findIndex((item) => item.id === product.id) === index,
+      ),
+    [query.data?.items],
+  );
 
   if (query.isLoading) {
     return (
-      <section className="mb-8">
-        <SectionHeader
-          title="Fresh15 Smart Basket"
-          subtitle="Your weekly basket, built from your routine"
-        />
-        <ProductGridSkeleton count={5} />
+      <section className="mb-9">
+        <SectionHeader title="Fresh15 Smart Basket" subtitle="Your routine, turned into a short weekly shelf" />
+        <ProductGridSkeleton count={4} />
       </section>
     );
   }
@@ -189,7 +203,7 @@ export function SmartBasket({
   return (
     <Rail
       title="Fresh15 Smart Basket"
-      subtitle="Based on your routine, replenishment timing and seasonal availability"
+      subtitle="Routine-based replenishment and seasonal availability"
       products={products}
       requestId={query.data?.requestId ?? ""}
       type="SMART_BASKET"

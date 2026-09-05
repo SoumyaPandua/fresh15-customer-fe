@@ -3,7 +3,6 @@ import { useState, type ReactNode } from "react";
 
 type Props = {
   emoji: string;
-  /** Optional backend image URL — falls back to the emoji art when absent or broken. */
   src?: string | undefined;
   alt?: string;
   gradient?: "warm" | "cool" | "fresh" | "primary";
@@ -26,14 +25,22 @@ const gradientMap: Record<NonNullable<Props["gradient"]>, string> = {
   primary: "gradient-primary",
 };
 
-export function ProductArt({ emoji, src, alt, gradient = "fresh", className, size = "md", children }: Props) {
+export function ProductArt({
+  emoji,
+  src,
+  alt,
+  gradient = "fresh",
+  className,
+  size = "md",
+  children,
+}: Props) {
   const [failed, setFailed] = useState(false);
   const showImage = !!src && !failed;
 
   return (
     <div
       className={cn(
-        "relative flex items-center justify-center overflow-hidden rounded-2xl",
+        "relative flex items-center justify-center overflow-hidden rounded-[1.05rem]",
         gradientMap[gradient],
         className,
       )}
@@ -57,4 +64,3 @@ export function ProductArt({ emoji, src, alt, gradient = "fresh", className, siz
     </div>
   );
 }
-
