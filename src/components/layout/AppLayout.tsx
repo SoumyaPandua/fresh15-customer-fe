@@ -15,7 +15,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </main>
       <BottomNav />
       <Fresh15AiAssistant />
-      <Fresh15AiAgent />
+      {/* <Fresh15AiAgent /> */}
     </div>
   );
 }
