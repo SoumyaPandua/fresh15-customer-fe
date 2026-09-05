@@ -181,6 +181,13 @@ export function useCartBook() {
   };
 }
 
+/**
+ * Reactive cart count for global navigation.
+ *
+ * The old authenticated implementation used queryClient.getQueryData(), which
+ * only reads a cache snapshot and does not subscribe TopBar to cache changes.
+ * This query subscribes TopBar to the same cart cache used by cart mutations.
+ */
 export function useCartCount() {
   const token = useAuth((s) => s.token);
   const localCount = useCart(
@@ -188,10 +195,16 @@ export function useCartCount() {
   );
   const isAuthed = Boolean(token);
   const cartKey = ["cart", token ?? "guest"] as const;
-  const qc = useQueryClient();
+
+  const query = useQuery({
+    queryKey: cartKey,
+    queryFn: () => cartApi.get(token),
+    enabled: isAuthed,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
 
   if (!isAuthed) return localCount;
 
-  const snapshot = qc.getQueryData<CartSnapshot>(cartKey);
-  return Number(snapshot?.totalQuantity) || 0;
+  return Number(query.data?.totalQuantity) || 0;
 }
