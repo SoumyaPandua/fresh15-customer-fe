@@ -1,10 +1,9 @@
 "use client";
-
 import type { ReactNode } from "react";
 import { TopBar } from "./TopBar";
 import { BottomNav } from "./BottomNav";
 import { Fresh15AiAssistant } from "../common/Fresh15AiAssistant";
-import { Fresh15AiAgent } from "../common/Fresh15AiAgent";
+import { DeliveryRatingPrompt } from "../common/DeliveryRatingPrompt";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -14,8 +13,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6">{children}</div>
       </main>
       <BottomNav />
+      <DeliveryRatingPrompt />
       <Fresh15AiAssistant />
-      {/* <Fresh15AiAgent /> */}
     </div>
   );
 }
