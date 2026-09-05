@@ -1,12 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { ComponentType } from "react";
 
-const HomePage = dynamic<ComponentType>(
+const HomePage = dynamic(
   () =>
     import("@/routes/index").then(
-      ({ Route }) => Route.component as ComponentType,
+      ({ Route }) => Route.component,
     ),
   {
     ssr: false,
