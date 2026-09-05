@@ -96,7 +96,8 @@ export function useNotifications() {
   });
 
   const notifications = listQ.data ?? [];
-  const unreadCount = countQ.data ?? notifications.filter((n) => !n.read).length;
+  const unreadCount =
+    countQ.data ?? notifications.filter((n) => !n.read).length;
 
   return {
     isAuthed: enabled,

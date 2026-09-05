@@ -229,7 +229,7 @@ function ProfilePage() {
           </button>
         </div>
 
-        <div className="pt-2 text-center text-xs text-muted-foreground">Fresh15 · v1.0.0 · Made with 💚 in India</div>
+        <div className="pt-2 text-center text-xs text-muted-foreground">Fresh15 · v1.0.0 · Made with 💚 in India ~ Srp</div>
       </div>
 
       <Dialog open={editing} onOpenChange={setEditing}>
