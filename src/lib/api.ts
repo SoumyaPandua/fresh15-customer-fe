@@ -63,7 +63,6 @@ export function buildHomeSections(list: Product[]): HomeSections {
   };
 }
 
-
 function targetToHref(type: BannerTargetType | undefined, value?: string) {
   const v = String(value ?? "").trim();
   switch (type) {
@@ -132,9 +131,9 @@ export const api = {
   async getProducts(filter?: ProductQuery): Promise<Product[]> {
     return withCatalogFallback(
       async () => {
-        const list = await catalogApi.getProducts(filter);
-        // Backend query support is not guaranteed — re-apply filters client-side.
-        return filterLocally(list, filter);
+        // Preserve backend relevance (including Elasticsearch tag/SKU matches)
+        // instead of filtering the ranked results again in the browser.
+        return catalogApi.getProducts(filter);
       },
       () => filterLocally(demoProducts, filter),
     );
@@ -179,7 +178,7 @@ export const api = {
   async checkPincode(pincode: string) {
     await delay(400);
     // Serviceable if starts with 4 (mock)
-    return { serviceable: /^4\d{5}$/.test(pincode), etaMinutes: 12 };
+    return { serviceable: /^\d{6}$/.test(pincode) && pincode.startsWith("4"), etaMinutes: 12 };
   },
   async placeOrder(_payload: unknown) {
     await delay(700);
